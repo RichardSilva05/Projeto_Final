@@ -1,0 +1,221 @@
+/* =========================
+   NAVBAR
+========================= */
+.navbar {
+  padding: 0px;
+  background-color: rgb(255, 255, 255);
+
+}
+
+.navbar-nav .nav-link {
+  font-size: 14px;
+}
+
+.navbar-nav .nav-item {
+  margin-right: 20px;
+}
+
+/* Logo da navbar */
+.logo {
+  height: 100px;
+  width: auto;
+}
+
+/* =========================
+   FOOTER
+========================= */
+footer {
+  min-height: 100px;
+  background-color: rgb(255, 255, 255);
+  margin-top: 100px;
+}
+
+/* =========================
+   CONTAINER
+========================= */
+.container {
+  min-height: 330px;
+  width: 90%;
+  max-width: 1200px;
+  margin: auto;
+}
+
+/* =========================
+   SEÇÃO INÍCIO
+========================= */
+#inicio {
+  padding-top: -200px;
+}
+
+.conteudo-proposito {
+  display: flex;
+  align-items: center;
+  gap: 40px;
+}
+
+/* Imagem da seção inicial */
+.prediogesso {
+  margin-left: auto;
+  width: 400px;
+  height: 400px;
+  margin-right: 10px;
+  margin-top: -200px;
+}
+
+.sobre {
+  margin-top: -80px;
+}
+
+/* =========================
+   SEÇÃO SOBRE
+========================= */
+.logosobre {
+  width: 400px;
+  height: 300px;
+  margin-top: -100px;
+}
+
+/* Título seção sobre */
+h1.esquerda {
+  margin-left: 800px;
+  margin-top: 50px;
+}
+.espaço{
+  text-decoration: underline rgb(252, 96, 96);
+  text-decoration-thickness: 2px;
+}
+.futuro{
+  text-decoration: underline rgb(252, 96, 96);
+  text-decoration-thickness: 2px;
+}
+
+/* Texto alinhado */
+p.esquerda {
+  text-align: right;
+}
+
+/* =========================
+   LINHAS HR
+========================= */
+hr.esquerda {
+  border: none;
+  height: 2px;
+  background-color: #ff0202;
+  width: 50%;
+  margin-right: auto;
+  margin-top: -10 px;
+}
+
+hr.esquerda-2 {
+  border: none;
+  height: 2px;
+  background-color: #2600ff;
+  width: 50%;
+  margin-left: auto;
+  margin-right: 300px;
+  margin-top: -10px;
+}
+hr.direita {
+  border: none;
+  height: 2px;
+  background-color: #ff0202;
+  width: 50%;
+  margin-left: 500px;
+  margin-top: -10 px;
+}
+
+hr.direita-2 {
+  border: none;
+  height: 2px;
+  background-color: #2903ff;
+  width: 50%;
+  margin-left: auto;
+  margin-right: -200px;
+  margin-top: -10px;
+}
+
+/* =========================
+   BOTÕES
+========================= */
+.btn-orcamento {
+  background-color: rgb(255, 255, 255);
+  font-size: 25px;
+  text-decoration: underline red;
+  font-family: 'Verdana, sans-serif';
+
+  padding: 10px 20px;
+  border-radius: 28px;
+  cursor: pointer;
+  margin: 0 25px;
+}
+
+.btn-orcamento:hover {
+  background-color: #e47474;
+}
+
+.btn-orcamento_segundo {
+  background-color: rgb(255, 255, 255);
+  font-size: 20px;
+  font-family: 'Verdana, sans-serif';
+
+  padding: 10px 20px;
+  border-radius: 20px;
+  cursor: pointer;
+  margin-left: -5px;
+  margin-top: -80px;
+}
+
+.btn-orcamento_segundo:hover {
+  background-color: #e47474;
+}
+
+/* =========================
+   LINKS
+========================= */
+a {
+  text-decoration: none;
+  color: inherit;
+}
+.menu{
+  text-decoration: underline;
+  text-decoration-color: red;
+  text-decoration-thickness: 1px;
+}
+
+/* =========================
+   FORMULÁRIO
+========================= */
+.form-box {
+  margin-top: -120px;
+  margin-bottom: -210px;
+  position: relative;
+  z-index: 10;
+}
+
+.comentario-box {
+  margin-top: -60px;
+  background: white;
+  padding: 15px;
+  border-radius: 10px;
+}
+.formulario{
+  background-color: rgb(236, 78, 78);
+}
+.enviar{
+  background-color: rgb(236, 78, 78);
+}
+.enviar:hover{
+  background-color: rgb(255, 255, 255);
+}
+.card-hover {
+  transition: all 0.3s ease;
+  border: 2px solid transparent;
+}
+
+.card-hover:hover {
+  border-color:rgb(240, 111, 111);
+}
+.cardfuturo {
+  margin-left: 0;
+  margin-right: auto;
+}
