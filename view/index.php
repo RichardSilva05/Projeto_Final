@@ -44,7 +44,7 @@ $empresa = "Sabino Gesso";
       <ul class="navbar-nav ms-auto align-items-lg-center">
 
         <li class="nav-item ms-lg-3 display-4 menu">
-          <a class="nav-link text-black fs-4 " href="#inicio">Inicio</a>
+          <a class="nav-link text-black fs-4 " href="#">Inicio</a>
         </li>
 
         <li class="nav-item ms-lg-3 display-4 menu">
@@ -183,7 +183,7 @@ $empresa = "Sabino Gesso";
       <div class="col-lg-5 text-center">
         <img src="predio3.jpg"
              alt="Imagem de gesso"
-             class="img-fluid"
+             class="img-fluid predio3"
              style="max-width: 100%;">
       </div>
 
@@ -255,8 +255,7 @@ $empresa = "Sabino Gesso";
 <hr class="esquerda">
 
 <!-- Formulário -->
-<section  class="section py-5 formu
-lario">
+<section  class="section py-5 formulario">
   <div class="container">
 
     <div class="row align-items-start">

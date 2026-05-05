@@ -60,8 +60,38 @@ footer {
   height: 400px;
   margin-right: 10px;
   margin-top: -200px;
-}
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
 
+}
+.prediogesso:hover{
+  transform: scale(1.05) translateY(-5px);
+  box-shadow: 0 10px 20px rgba(0,0,0,0.2);
+}
+.predio3{
+  margin-left: auto;
+  width: 400px;
+  height: 400px;
+  margin-right: 10px;
+  margin-top: -80px;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+.predio3:hover{
+  transform: scale(1.05) translateY(-5px);
+  box-shadow: 0 10px 20px rgba(0,0,0,0.2);
+}
+.gessoparceria {
+  margin-left: auto;
+  width: 350px;
+  height: 350px;
+  margin-right: 10px;
+  margin-top: -80px;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+
+}
+.gessoparceria:hover{
+  transform: scale(1.05) translateY(-5px);
+  box-shadow: 0 10px 20px rgba(0,0,0,0.2);
+}
 .sobre {
   margin-top: -80px;
 }
@@ -73,6 +103,12 @@ footer {
   width: 400px;
   height: 300px;
   margin-top: -100px;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+
+}
+.logosobre:hover{
+  transform: scale(1.05) translateY(-5px);
+  box-shadow: 0 10px 20px rgba(0,0,0,0.2);
 }
 
 /* Título seção sobre */
@@ -200,12 +236,13 @@ a {
 }
 .formulario{
   background-color: rgb(236, 78, 78);
+  background: linear-gradient(to right, #ffffff,#db4d4d );
 }
 .enviar{
   background-color: rgb(236, 78, 78);
 }
 .enviar:hover{
-  background-color: rgb(255, 255, 255);
+  background-color: rgb(209, 141, 141);
 }
 .card-hover {
   transition: all 0.3s ease;
