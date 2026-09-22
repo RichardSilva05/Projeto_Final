@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Galeria de Serviços - Sabino Gesso</title>
+  <meta name="description" content="Confira fotos dos trabalhos da Sabino Gesso: sancas, forros, molduras e divisórias em gesso.">
 
   <!-- Bootstrap -->
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -24,7 +25,7 @@
 <body>
 
   <!-- ============ NAVBAR ============ -->
-  <nav class="navbar navbar-expand-lg navbar-dark fixed-top">
+  <nav class="navbar navbar-expand-lg navbar-light fixed-top">
     <div class="container-fluid">
 
       <a class="navbar-brand" href="../index.html">
@@ -43,21 +44,19 @@
           </li>
 
           <li class="nav-item ms-lg-3 display-4 menu">
-            <a class="nav-link text-black fs-4" href="index.html#sobrenos">Sobre Nós</a>
+            <a class="nav-link text-black fs-4" href="../view/index.html#sobrenos">Sobre Nós</a>
           </li>
 
           <li class="nav-item ms-lg-3 display-4 menu">
-            <a class="nav-link text-black fs-4" href="index.html#valores">Missão</a>
+            <a class="nav-link text-black fs-4" href="../view/index.html#missao">Missão</a>
           </li>
 
           <li class="nav-item ms-lg-3 display-4 menu">
-            <a class="nav-link text-black fs-4" href="index.html#parcerias">Parcerias</a>
+            <a class="nav-link text-black fs-4" href="../view/index.html#parcerias">Parcerias</a>
           </li>
 
           <li class="nav-item ms-lg-3">
-            <button class="btn-orcamento text-red">
-              <a href="index.html#formulario">Fazer Orçamento</a>
-            </button>
+            <a class="btn-orcamento text-red" href="../view/index.html#formulario">Fazer Orçamento</a>
           </li>
 
         </ul>
@@ -68,17 +67,26 @@
 
   <!-- ============ CABEÇALHO DA GALERIA ============ -->
 
+  <section class="container pt-5">
+    <h1 class="display-4 espaço text-center">Galeria de Serviços</h1>
+    <p class="display-4 fs-5 mt-3 text-center">
+      Confira alguns dos nossos trabalhos em sancas, forros, molduras e divisórias em gesso.
+    </p>
 
- 
+    <!-- Filtros por categoria -->
+    <div class="filtros mt-4">
+      <button class="btn-filtro ativo" data-filtro="todos">Todos</button>
+      <button class="btn-filtro" data-filtro="sanca">Sancas</button>
+      <button class="btn-filtro" data-filtro="forro">Forros</button>
+      <button class="btn-filtro" data-filtro="moldura">Molduras</button>
+      <button class="btn-filtro" data-filtro="divisoria">Divisórias</button>
+    </div>
+  </section>
+
   <!-- ============ GRADE DE FOTOS ============ -->
-  <br><br><br>
-  <section class="container pb-5">
+  <section class="container pb-5 pt-4">
     <div class="row g-4 galeria-grid">
-        <h1 class="display-4 espaço text-center">Galeria de Serviços</h1>
-            <p class="display-4 fs-5 mt-3 text-center">
-            Confira alguns dos nossos trabalhos em sancas, forros, molduras e divisórias em gesso.
-            </p>
-            <br><br><br><br><br>
+
       <div class="col-6 col-md-4 col-lg-3 galeria-item" data-categoria="sanca">
         <div class="galeria-card card-hover" data-bs-toggle="modal" data-bs-target="#modalFoto"
              data-img="predio3.jpg" data-titulo="Sanca de gesso">
@@ -96,7 +104,7 @@
       </div>
 
       <div class="col-6 col-md-4 col-lg-3 galeria-item" data-categoria="moldura">
-        <div class="galeria-card card-hover" data-bs-toggle="modal" data-bs-target="#modalFoto"
+        <div class="galeria-card card-hover" data-bs-toggle="modal" dat a-bs-target="#modalFoto"
              data-img="predio3.jpg" data-titulo="Moldura decorativa">
           <img src="predio3.jpg" alt="Moldura decorativa" class="img-fluid galeria-img">
           <div class="galeria-legenda">Moldura decorativa</div>
