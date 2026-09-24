@@ -14,7 +14,7 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
 
   <!-- CSS próprio -->
-  <link rel="stylesheet" href="stayle.css">
+  <link rel="stylesheet" href="css/index.css">
 
   <style>
     body {
@@ -30,7 +30,7 @@
     <div class="container-fluid">
 
       <a class="navbar-brand" href="#">
-        <img src="logo.png" alt="Logo" class="logo">
+        <img src="../img/logo.png" alt="Logo" class="logo">
       </a>
 
       <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#menu">
@@ -60,8 +60,17 @@
             <a class="nav-link text-black fs-4" href="#projetos">Projetos</a>
           </li>
 
-          <li class="nav-item ms-lg-3">
-            <a class="btn-orcamento text-red" href="#formulario">Fazer Orçamento</a>
+          <li class="nav-item dropdown ms-lg-3">
+            <a class="btn-orcamento dropdown-toggle" href="#" role="button"
+               data-bs-toggle="dropdown" aria-expanded="false">
+              Fazer Orçamento
+            </a>
+          
+            <ul class="dropdown-menu dropdown-menu-end">
+              <li><a class="dropdown-item" href="../view/formulario_cpf.html">Sou pessoa Fisica CPF</a></li>
+              <li><hr class="dropdown-divider"></li>
+              <li><a class="dropdown-item" href="#">Sou pessoa Juridica CNPJ</a></li>
+            </ul>
           </li>
 
         </ul>
@@ -88,7 +97,7 @@
           transformando ideias em realidade através do gesso.
         </p>
 
-        <img src="prediogesso.jpg" alt="Imagem de gesso" class="img-fluid prediogesso" width="180">
+        <img src="../img/prediogesso.jpg" alt="Imagem de gesso" class="img-fluid prediogesso" width="180">
       </div>
 
     </div>
@@ -105,7 +114,7 @@
       <h2 class="display-4 esquerda espaço">Quem somos:</h2>
 
       <div class="conteudo-proposito mt-4">
-        <img src="logo.png" alt="Logo sobre" class="img-fluid rounded-circle logosobre" width="180">
+        <img src="../img/logo.png" alt="Logo sobre" class="img-fluid rounded-circle logosobre" width="180">
 
         <p class="esquerda display-4 fs-5">
           A nossa empresa nasceu do sonho e dedicação de um único profissional:
@@ -182,7 +191,7 @@
   <section id="parcerias" class="section py-5">
     <div class="container">
 
-      <h2 class="display-4 text-start espaço">_______Trabalhos e Parcerias_____________ </h2>
+      <h2 class="display-4 text-start espaço">Trabalhos e Parcerias </h2>
       <br><br>
 
       <div class="row align-items-center mt-4">
@@ -192,7 +201,7 @@
           <div class="card shadow mb-3 card-hover">
             <div class="card-body">
               <div class="d-flex align-items-center gap-3">
-                <img src="logo.png" width="90">
+                <img src="../img/logo.png" width="90">
                 <small class="h6">Sabino Gesso</small>
               </div>
             </div>
@@ -201,7 +210,7 @@
           <div class="card shadow mb-3 card-hover">
             <div class="card-body">
               <div class="d-flex align-items-center gap-3">
-                <img src="logo.png" width="90">
+                <img src="../img/logo.png" width="90">
                 <small class="h6">Sabino Gesso</small>
               </div>
             </div>
@@ -210,7 +219,7 @@
           <div class="card shadow mb-3 card-hover">
             <div class="card-body">
               <div class="d-flex align-items-center gap-3">
-                <img src="logo.png" width="90">
+                <img src="../img/logo.png" width="90">
                 <small class="h6">Sabino Gesso</small>
               </div>
             </div>
@@ -297,63 +306,6 @@
             </div>
           </div>
 
-        </div>
-
-        <!-- Formulário de orçamento -->
-        <div class="col-lg-5">
-          <div id="formulario" class="form-box shadow p-4 bg-white rounded">
-            <h4 class="display-4 fs-1">Fazer Orçamento</h4>
-
-            <form>
-              <label for="campo-nome" class="visually-hidden">Nome</label>
-              <input id="campo-nome" type="text" class="form-control mb-2" placeholder="Nome">
-
-              <label for="campo-cpf" class="visually-hidden">CPF/CNPJ</label>
-              <input id="campo-cpf" type="text" class="form-control mb-2" placeholder="CPF/CNPJ">
-
-              <label for="campo-email" class="visually-hidden">Email</label>
-              <input id="campo-email" type="email" class="form-control mb-2" placeholder="Email">
-
-              <label for="campo-telefone" class="visually-hidden">Telefone</label>
-              <input id="campo-telefone" type="text" class="form-control mb-2" placeholder="Telefone">
-
-              <h6 class="display-4 fs-4">
-                <i class="bi bi-house-check-fill"></i> Endereço do orçamento:
-              </h6>
-
-              <div class="row">
-                <div class="col-md-6">
-                  <label for="campo-cep" class="visually-hidden">CEP</label>
-                  <input id="campo-cep" type="text" class="form-control mb-2" placeholder="CEP">
-                </div>
-                <div class="col-md-6">
-                  <label for="campo-estado" class="visually-hidden">Estado</label>
-                  <input id="campo-estado" type="text" class="form-control mb-2" placeholder="Estado">
-                </div>
-                <div class="col-md-6">
-                  <label for="campo-cidade" class="visually-hidden">Cidade</label>
-                  <input id="campo-cidade" type="text" class="form-control mb-2" placeholder="Cidade">
-                </div>
-                <div class="col-md-6">
-                  <label for="campo-bairro" class="visually-hidden">Bairro</label>
-                  <input id="campo-bairro" type="text" class="form-control mb-2" placeholder="Bairro">
-                </div>
-                <div class="col-md-6">
-                  <label for="campo-logradouro" class="visually-hidden">Logradouro</label>
-                  <input id="campo-logradouro" type="text" class="form-control mb-2" placeholder="Logradouro">
-                </div>
-                <div class="col-md-6">
-                  <label for="campo-numero" class="visually-hidden">Número</label>
-                  <input id="campo-numero" type="text" class="form-control mb-2" placeholder="Número">
-                </div>
-              </div>
-
-              <label for="campo-complemento" class="visually-hidden">Complemento</label>
-              <textarea id="campo-complemento" class="form-control mt-3" rows="4" placeholder="Digite seu complemento"></textarea>
-
-              <button class="btn w-100 mt-3 enviar">Enviar</button>
-            </form>
-          </div>
         </div>
 
       </div>

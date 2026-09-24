@@ -29,7 +29,7 @@
     <div class="container-fluid">
 
       <a class="navbar-brand" href="../index.html">
-        <img src="../view/logo.png" alt="Logo" class="logo">
+        <img src="../img/logo.png" alt="Logo" class="logo">
       </a>
 
       <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#menu">
@@ -55,8 +55,17 @@
             <a class="nav-link text-black fs-4" href="../view/index.html#parcerias">Parcerias</a>
           </li>
 
-          <li class="nav-item ms-lg-3">
-            <a class="btn-orcamento text-red" href="../view/index.html#formulario">Fazer Orçamento</a>
+          <li class="nav-item dropdown ms-lg-3">
+            <a class="btn-orcamento dropdown-toggle" href="#" role="button"
+               data-bs-toggle="dropdown" aria-expanded="false">
+              Fazer Orçamento
+            </a>
+          
+            <ul class="dropdown-menu dropdown-menu-end">
+              <li><a class="dropdown-item" href="../view/formulario.html">Sou pessoa Fisica CPF</a></li>
+              <li><hr class="dropdown-divider"></li>
+              <li><a class="dropdown-item" href="#">Sou pessoa Juridica CNPJ</a></li>
+            </ul>
           </li>
 
         </ul>

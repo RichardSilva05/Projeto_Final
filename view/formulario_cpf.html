@@ -1,0 +1,620 @@
+<!doctype html>
+<html lang="pt-br">
+
+<head>
+
+    <meta charset="utf-8">
+
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1">
+
+    <title>Orçamento - Sabino Gesso</title>
+
+
+    <!-- =========================
+         BOOTSTRAP
+    ========================== -->
+
+    <link
+        href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css"
+        rel="stylesheet">
+
+
+    <!-- =========================
+         BOOTSTRAP ICONS
+    ========================== -->
+
+    <link
+        rel="stylesheet"
+        href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+
+
+    <!-- =========================
+         CSS DO FORMULÁRIO
+    ========================== -->
+
+    <link
+        rel="stylesheet"
+        href="css/view_forms.css">
+
+
+    <!-- =========================
+         jsPDF
+    ========================== -->
+
+    <script
+        src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js">
+    </script>
+
+
+    <script src="../view/gerar_pdf.js"></script>
+
+</head>
+
+
+<body>
+
+
+    <!-- ==================================================
+         NAVBAR
+    ================================================== -->
+
+    <nav class="navbar navbar-expand-lg navbar-light fixed-top">
+
+        <div class="container-fluid">
+
+
+            <!-- LOGO -->
+
+            <a class="navbar-brand"
+               href="index.html">
+
+                <img
+                    src="../img/logo.png"
+                    alt="Sabino Gesso"
+                    class="logo">
+
+            </a>
+
+
+            <!-- BOTÃO MOBILE -->
+
+            <button
+                class="navbar-toggler"
+                type="button"
+                data-bs-toggle="collapse"
+                data-bs-target="#menu"
+                aria-controls="menu"
+                aria-expanded="false"
+                aria-label="Abrir menu">
+
+                <span class="navbar-toggler-icon"></span>
+
+            </button>
+
+
+            <!-- MENU -->
+
+            <div
+                class="collapse navbar-collapse"
+                id="menu">
+
+                <ul class="navbar-nav ms-auto align-items-lg-center mx-auto">
+
+
+                    <!-- INÍCIO -->
+
+                    <li class="nav-item ms-lg-3 menu">
+
+                        <a
+                            class="nav-link text-black fs-4"
+                            href="index.html">
+
+                            Início
+
+                        </a>
+
+                    </li>
+
+
+                    <!-- GERAR PDF -->
+
+                    <li class="nav-item ms-lg-3 menu">
+
+                        <a
+                            class="nav-link text-black fs-4"
+                            href="#"
+                            id="btnGerarPDF"
+                            title="Gerar PDF">
+
+                            <i class="bi bi-file-earmark-arrow-down"></i>
+
+                        </a>
+
+                    </li>
+
+                </ul>
+
+            </div>
+
+        </div>
+
+    </nav>
+
+
+    <!-- ==================================================
+         FORMULÁRIO
+    ================================================== -->
+
+    <main class="form-orcamento">
+
+
+        <!-- LOGO DO FORMULÁRIO -->
+
+        <div class="logo-formulario">
+
+            <img
+                src="logo.png"
+                alt="Sabino Gesso">
+
+        </div>
+
+
+        <!-- TÍTULO -->
+
+        <h1>
+            Orçamento para CPF
+        </h1>
+
+
+        <div class="subtitulo">
+            Pessoa Física
+        </div>
+
+
+        <!-- ==================================================
+             FORM
+        ================================================== -->
+
+        <form
+            id="formOrcamentoPF">
+
+
+            <!-- ==================================================
+                 DADOS DO CLIENTE
+            ================================================== -->
+
+            <h2>
+                Dados do cliente:
+            </h2>
+
+
+            <!-- NOME -->
+
+            <input
+                id="nome"
+                name="nome"
+                type="text"
+                class="form-control"
+                placeholder="Nome completo"
+                autocomplete="name"
+                required>
+
+
+            <!-- CPF -->
+
+            <input
+                id="cpf"
+                name="cpf"
+                type="text"
+                class="form-control"
+                placeholder="CPF"
+                maxlength="14"
+                inputmode="numeric"
+                autocomplete="off"
+                required>
+
+
+            <!-- E-MAIL -->
+
+            <input
+                id="email"
+                name="email"
+                type="email"
+                class="form-control"
+                placeholder="Digite seu e-mail"
+                autocomplete="email"
+                required>
+
+
+            <!-- TELEFONE -->
+
+            <input
+                id="telefone"
+                name="telefone"
+                type="tel"
+                class="form-control"
+                placeholder="Telefone"
+                maxlength="15"
+                inputmode="tel"
+                autocomplete="tel"
+                required>
+
+
+            <!-- ==================================================
+                 SERVIÇO
+            ================================================== -->
+
+            <h2>
+                Sobre o serviço:
+            </h2>
+
+
+            <span class="rotulo-pequeno">
+                Tipo de serviço
+            </span>
+
+
+            <div class="d-flex flex-wrap mb-2">
+
+
+                <!-- SANCA -->
+
+                <div class="form-check-pill">
+
+                    <input
+                        class="form-check-input"
+                        type="checkbox"
+                        id="servicoSanca">
+
+                    <label for="servicoSanca">
+                        Sanca
+                    </label>
+
+                </div>
+
+
+                <!-- FORRO -->
+
+                <div class="form-check-pill">
+
+                    <input
+                        class="form-check-input"
+                        type="checkbox"
+                        id="servicoForro">
+
+                    <label for="servicoForro">
+                        Forro rebaixado
+                    </label>
+
+                </div>
+
+
+                <!-- MOLDURA -->
+
+                <div class="form-check-pill">
+
+                    <input
+                        class="form-check-input"
+                        type="checkbox"
+                        id="servicoMoldura">
+
+                    <label for="servicoMoldura">
+                        Moldura decorativa
+                    </label>
+
+                </div>
+
+
+                <!-- DIVISÓRIA -->
+
+                <div class="form-check-pill">
+
+                    <input
+                        class="form-check-input"
+                        type="checkbox"
+                        id="servicoDivisoria">
+
+                    <label for="servicoDivisoria">
+                        Divisória
+                    </label>
+
+                </div>
+
+            </div>
+
+
+            <!-- OUTRO SERVIÇO -->
+
+            <div class="d-flex align-items-center mb-3">
+
+                <div class="form-check-pill mb-0">
+
+                    <input
+                        class="form-check-input"
+                        type="checkbox"
+                        id="servicoOutro">
+
+                    <label for="servicoOutro">
+                        Outro:
+                    </label>
+
+                </div>
+
+
+                <input
+                    id="servicoOutroTexto"
+                    type="text"
+                    class="form-control campo-outro"
+                    placeholder="Descreva o serviço">
+
+            </div>
+
+
+            <!-- ==================================================
+                 ÁREA E PRAZO
+            ================================================== -->
+
+            <div class="row-endereco mb-2">
+
+
+                <!-- ÁREA -->
+
+                <div>
+
+                    <input
+                        id="area"
+                        name="area"
+                        type="number"
+                        class="form-control"
+                        placeholder="Área aprox. (m²)"
+                        min="0.1"
+                        step="0.01"
+                        required>
+
+                </div>
+
+
+                <!-- PRAZO -->
+
+                <div style="flex: 2;">
+
+                    <span class="rotulo-pequeno">
+                        Prazo desejado
+                    </span>
+
+
+                    <div class="d-flex flex-wrap">
+
+
+                        <!-- URGENTE -->
+
+                        <div class="form-check-pill">
+
+                            <input
+                                class="form-check-input"
+                                type="radio"
+                                name="prazo"
+                                id="prazoUrgente"
+                                value="Urgente">
+
+                            <label for="prazoUrgente">
+                                Urgente
+                            </label>
+
+                        </div>
+
+
+                        <!-- 30 DIAS -->
+
+                        <div class="form-check-pill">
+
+                            <input
+                                class="form-check-input"
+                                type="radio"
+                                name="prazo"
+                                id="prazo30dias"
+                                value="Até 30 dias">
+
+                            <label for="prazo30dias">
+                                Até 30 dias
+                            </label>
+
+                        </div>
+
+
+                        <!-- SEM PRESSA -->
+
+                        <div class="form-check-pill">
+
+                            <input
+                                class="form-check-input"
+                                type="radio"
+                                name="prazo"
+                                id="prazoSemPressa"
+                                value="Sem pressa">
+
+                            <label for="prazoSemPressa">
+                                Sem pressa
+                            </label>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+
+            <!-- ==================================================
+                 ENDEREÇO
+            ================================================== -->
+
+            <h2>
+
+                <i class="bi bi-house-check-fill"></i>
+
+                Endereço do orçamento:
+
+            </h2>
+
+
+            <!-- CEP / ESTADO -->
+
+            <div class="row-endereco">
+
+                <div>
+
+                    <input
+                        id="cep"
+                        name="cep"
+                        type="text"
+                        class="form-control"
+                        placeholder="CEP"
+                        maxlength="9"
+                        inputmode="numeric"
+                        autocomplete="postal-code"
+                        required>
+
+                </div>
+
+
+                <div>
+
+                    <input
+                        id="estado"
+                        name="estado"
+                        type="text"
+                        class="form-control"
+                        placeholder="Estado"
+                        readonly
+                        required>
+
+                </div>
+
+            </div>
+
+
+            <!-- CIDADE / BAIRRO -->
+
+            <div class="row-endereco">
+
+                <div>
+
+                    <input
+                        id="cidade"
+                        name="cidade"
+                        type="text"
+                        class="form-control"
+                        placeholder="Cidade"
+                        readonly
+                        required>
+
+                </div>
+
+
+                <div>
+
+                    <input
+                        id="bairro"
+                        name="bairro"
+                        type="text"
+                        class="form-control"
+                        placeholder="Bairro"
+                        readonly
+                        required>
+
+                </div>
+
+            </div>
+
+
+            <!-- LOGRADOURO / NÚMERO -->
+
+            <div class="row-endereco">
+
+                <div>
+
+                    <input
+                        id="logradouro"
+                        name="logradouro"
+                        type="text"
+                        class="form-control"
+                        placeholder="Logradouro"
+                        readonly
+                        required>
+
+                </div>
+
+
+                <div>
+
+                    <input
+                        id="numero"
+                        name="numero"
+                        type="text"
+                        class="form-control"
+                        placeholder="Número"
+                        required>
+
+                </div>
+
+            </div>
+
+
+            <!-- COMPLEMENTO -->
+
+            <textarea
+                id="complemento"
+                name="complemento"
+                class="form-control"
+                rows="4"
+                placeholder="Digite seu complemento / observações"></textarea>
+
+
+            <!-- ==================================================
+                 BOTÃO
+            ================================================== -->
+
+            <button
+                type="submit"
+                class="btn-enviar">
+
+                Enviar
+
+            </button>
+
+
+        </form>
+
+    </main>
+
+
+    <!-- ==================================================
+         FOOTER
+    ================================================== -->
+
+    <footer class="text-center">
+
+        <p class="text-black fs-6">
+            Sabino Gesso
+        </p>
+
+        <small class="text-black fs-6">
+            © 2026 - Todos os direitos reservados
+        </small>
+
+    </footer>
+
+
+    <!-- ==================================================
+         JAVASCRIPT
+    ================================================== -->
+
+    <script src="../js/gerarPDF.js"></script>
+
+
+</body>
+
+</html>

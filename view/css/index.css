@@ -176,20 +176,6 @@ hr.direita-2 {
   background-color: #e47474;
 }
 
-.btn-orcamento_segundo {
-  display: inline-block;
-  background-color: rgb(255, 255, 255);
-  font-size: 16px;
-  font-family: 'Verdana', sans-serif;
-  padding: 10px 20px;
-  border-radius: 20px;
-  cursor: pointer;
-  margin: 20px auto 0;
-}
-.btn-orcamento_segundo:hover {
-  background-color: #e47474;
-}
-
 .btn-voltar {
   display: inline-block;
   background-color: rgb(236, 78, 78);
@@ -443,12 +429,6 @@ a {
     margin: 0 25px;
   }
 
-  .btn-orcamento_segundo {
-    font-size: 20px;
-    margin-left: -5px;
-    margin-top: -80px;
-  }
-
   .carrossel {
     height: 500px;
   }
@@ -468,3 +448,4 @@ a {
     margin-bottom: -210px;
   }
 }
+
