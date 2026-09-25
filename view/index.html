@@ -49,15 +49,15 @@
           </li>
 
           <li class="nav-item ms-lg-3 display-4 menu">
-            <a class="nav-link text-black fs-4" href="#missao">Missão</a>
-          </li>
-
-          <li class="nav-item ms-lg-3 display-4 menu">
             <a class="nav-link text-black fs-4" href="#parcerias">Parcerias</a>
           </li>
 
           <li class="nav-item ms-lg-3 display-4 menu">
             <a class="nav-link text-black fs-4" href="#projetos">Projetos</a>
+          </li>
+
+          <li class="nav-item ms-lg-3 display-4 menu">
+            <a class="nav-link text-black fs-4" href="#contatos">Contato</a>
           </li>
 
           <li class="nav-item dropdown ms-lg-3">
@@ -69,7 +69,7 @@
             <ul class="dropdown-menu dropdown-menu-end">
               <li><a class="dropdown-item" href="../view/formulario_cpf.html">Sou pessoa Fisica CPF</a></li>
               <li><hr class="dropdown-divider"></li>
-              <li><a class="dropdown-item" href="#">Sou pessoa Juridica CNPJ</a></li>
+              <li><a class="dropdown-item" href="../view/formulario_cnpj.html">Sou pessoa Juridica CNPJ</a></li>
             </ul>
           </li>
 
@@ -176,7 +176,7 @@
 
         <!-- Imagem -->
         <div class="col-lg-5 text-center">
-          <img src="predio3.jpg" alt="Imagem de gesso" class="img-fluid predio3" style="max-width: 100%;">
+          <img src="../img/predio3.jpg" alt="Imagem de gesso" class="img-fluid predio3" style="max-width: 100%;">
         </div>
 
       </div>
@@ -228,7 +228,7 @@
         </div>
 
         <div class="col-lg-5 text-center">
-          <img src="gessoparceria.jpg" alt="Imagem de gesso" class="img-fluid gessoparceria" width="300">
+          <img src="../img/gessoparceria.jpg" alt="Imagem de gesso" class="img-fluid gessoparceria" width="300">
         </div>
 
       </div>
@@ -247,8 +247,8 @@
   <section id="projetos" class="carrossel">
 
     <div class="slides">
-      <img src="predio2.png" alt="Projeto 1">
-      <img src="casa.jpg" alt="Projeto 2">
+      <img src="../img/predio2.png" alt="Projeto 2">
+      <img src="../img/predio3.jpg" alt="Projeto 2">
     </div>
 
     <button class="anterior" onclick="mudarSlide(-1)" aria-label="Slide anterior">&#10094;</button>
@@ -267,15 +267,15 @@
 
   <br><br><br><br><br><br>
 
-  <!-- ============ FORMULÁRIO ============ -->
-  <section class="section py-5 formulario">
+  <!-- ============ Contatos ============ -->
+  <section class="section py-5 contatos" id="contatos">
     <div class="container">
-
-      <div class="row align-items-start">
-
+  
+      <div class="row align-items-center">
+  
         <!-- Cards de contato -->
         <div class="col-lg-7">
-
+  
           <div class="card shadow mb-4 col-lg-10 card-hover">
             <div class="card-body">
               <div class="d-flex align-items-center gap-2">
@@ -285,7 +285,7 @@
               <p>(00) 0000-0000</p>
             </div>
           </div>
-
+  
           <div class="card shadow mb-4 col-lg-10 card-hover">
             <div class="card-body">
               <div class="d-flex align-items-center gap-2">
@@ -295,7 +295,7 @@
               <p>valmirsabino30@gmail.com</p>
             </div>
           </div>
-
+  
           <div class="card shadow mb-4 col-lg-10 card-hover">
             <div class="card-body">
               <div class="d-flex align-items-center gap-2">
@@ -305,11 +305,20 @@
               <p>@sabinogesso</p>
             </div>
           </div>
-
+  
         </div>
-
+  
+        <!-- Imagem -->
+        <div class="col-lg-5 imagem-contato-container">
+          <img 
+            src="../img/gessoparceria.jpg"
+            alt="Entre em contato com a Sabino Gesso"
+            class="imagem-contato"
+          >
+        </div>
+  
       </div>
-
+  
     </div>
   </section>
 
