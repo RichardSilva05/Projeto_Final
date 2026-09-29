@@ -59,35 +59,81 @@
 <body>
 
 
-    <!-- =====================================================
+    <!-- ==================================================
          NAVBAR
-    ====================================================== -->
+    ================================================== -->
 
     <nav class="navbar navbar-expand-lg navbar-light fixed-top">
 
-        <div class="container">
-
-            <a
-                class="navbar-brand"
-                href="../view/index.html"
-            >
-                Sabino Gesso
-            </a>
+        <div class="container-fluid">
 
 
-            <div class="ms-auto">
+            <!-- LOGO -->
 
-                <a
-                    class="nav-link text-black fs-4"
-                    href="#"
-                    id="btnGerarPDF"
-                    title="Gerar PDF"
-                    aria-label="Gerar PDF"
+            <div class="logo-formulario">
+
+                <img
+                    src="../img/logo.png"
+                    alt="Sabino Gesso"
                 >
 
-                    <i class="bi bi-file-earmark-arrow-down"></i>
+            </div>
 
-                </a>
+
+            <!-- BOTÃO MOBILE -->
+
+            <button
+                class="navbar-toggler"
+                type="button"
+                data-bs-toggle="collapse"
+                data-bs-target="#menu"
+                aria-controls="menu"
+                aria-expanded="false"
+                aria-label="Abrir menu">
+
+                <span class="navbar-toggler-icon"></span>
+
+            </button>
+
+
+            <!-- MENU -->
+
+            <div
+                class="collapse navbar-collapse"
+                id="menu">
+
+                <ul class="navbar-nav ms-auto align-items-lg-center mx-auto">
+
+                    <li class="nav-item ms-lg-3 menu">
+
+                        <a
+                            class="nav-link text-black fs-4"
+                            href="index.html">
+
+                            Início
+
+                        </a>
+
+                    </li>
+
+
+                    <!-- GERAR PDF -->
+
+                    <li class="nav-item ms-lg-3 menu">
+
+                        <a
+                            class="nav-link text-black fs-4"
+                            href="#"
+                            id="btnGerarPDF"
+                            title="Gerar PDF">
+
+                            <i class="bi bi-file-earmark-arrow-down"></i>
+
+                        </a>
+
+                    </li>
+
+                </ul>
 
             </div>
 
@@ -97,26 +143,25 @@
 
 
 
-    <!-- =====================================================
+    <!-- ==================================================
          FORMULÁRIO
-    ====================================================== -->
+    ================================================== -->
 
     <main class="form-orcamento">
 
 
-        <!-- =================================================
-             LOGO
-        ================================================== -->
+        <!-- LOGO -->
 
         <div class="logo-formulario">
 
             <img
                 src="../img/logo.png"
-                alt="Sabino Gesso"
-            >
+                alt="Sabino Gesso">
 
         </div>
 
+
+        <!-- TÍTULO -->
 
         <h1>
             Orçamento para CPF
