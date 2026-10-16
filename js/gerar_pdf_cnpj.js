@@ -1,1447 +1,1157 @@
+
+/* ============================================================
+   FORMULÁRIO DE ORÇAMENTO PJ - SABINO GESSO
+
+   - Máscaras de CNPJ, telefone e CEP
+   - Validação de CNPJ e e-mail
+   - Estados e cidades pela API do IBGE
+   - Endereço automático pelo CEP (ViaCEP)
+   - Envio ao banco de dados
+   - Geração de PDF após salvar
+   - Envio pelo WhatsApp
+   - Não apaga registros anteriores
+============================================================ */
+
+"use strict";
+
 // ============================================================
 // CONFIGURAÇÕES
 // ============================================================
 
+const API_URL = "http://localhost:3000/api/orcamentos/pj";
 const NUMERO_WHATSAPP_EMPRESA = "5511999999999";
 
-let estadosCarregamento = null;
+const IBGE_URL =
+    "https://servicodados.ibge.gov.br/api/v1/localidades";
 
+const VIACEP_URL = "https://viacep.com.br/ws";
+
+const UFS = [
+    "AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO",
+    "MA", "MT", "MS", "MG", "PA", "PB", "PR", "PE", "PI",
+    "RJ", "RN", "RS", "RO", "RR", "SC", "SP", "SE", "TO"
+];
+
+let estadosCarregamento = Promise.resolve();
+let consultaCEPAtual = 0;
+let consultaCidadesAtual = 0;
+let ultimoCEPConsultado = "";
+let cepEmConsulta = "";
+let envioEmAndamento = false;
 
 // ============================================================
-// FUNÇÃO AUXILIAR
+// FUNÇÕES AUXILIARES
 // ============================================================
 
-function somenteNumeros(valor) {
-    return valor.replace(/\D/g, "");
+function obterCampo(id) {
+    return document.getElementById(id);
 }
 
+function somenteNumeros(valor) {
+    return String(valor ?? "").replace(/\D/g, "");
+}
+
+function normalizarTexto(valor) {
+    return String(valor ?? "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .trim()
+        .toLocaleLowerCase("pt-BR");
+}
+
+function preencherSelect(select, placeholder, itens) {
+    if (!select) return;
+
+    select.innerHTML = "";
+
+    const opcaoInicial = document.createElement("option");
+    opcaoInicial.value = "";
+    opcaoInicial.textContent = placeholder;
+
+    select.appendChild(opcaoInicial);
+
+    itens.forEach(item => {
+        const opcao = document.createElement("option");
+
+        opcao.value = item.valor;
+        opcao.textContent = item.texto;
+
+        select.appendChild(opcao);
+    });
+}
 
 // ============================================================
 // MÁSCARA CNPJ
 // ============================================================
 
 function aplicarMascaraCNPJ(valor) {
+    let n = somenteNumeros(valor).slice(0, 14);
 
-    let numeros = somenteNumeros(valor);
+    n = n.replace(/^(\d{2})(\d)/, "$1.$2");
+    n = n.replace(/^(\d{2})\.(\d{3})(\d)/, "$1.$2.$3");
+    n = n.replace(/\.(\d{3})(\d)/, ".$1/$2");
+    n = n.replace(/(\d{4})(\d{1,2})$/, "$1-$2");
 
-    if (numeros.length > 14) {
-        numeros = numeros.substring(0, 14);
-    }
-
-    numeros = numeros.replace(
-        /(\d{2})(\d)/,
-        "$1.$2"
-    );
-
-    numeros = numeros.replace(
-        /(\d{3})(\d)/,
-        "$1.$2"
-    );
-
-    numeros = numeros.replace(
-        /(\d{3})(\d)/,
-        "$1/$2"
-    );
-
-    numeros = numeros.replace(
-        /(\d{4})(\d{1,2})$/,
-        "$1-$2"
-    );
-
-    return numeros;
+    return n;
 }
-
 
 // ============================================================
 // MÁSCARA TELEFONE
 // ============================================================
 
 function aplicarMascaraTelefone(valor) {
+    let n = somenteNumeros(valor).slice(0, 11);
 
-    let numeros = somenteNumeros(valor);
-
-    if (numeros.length > 11) {
-        numeros = numeros.substring(0, 11);
-    }
-
-    if (numeros.length <= 10) {
-
-        numeros = numeros.replace(
-            /(\d{2})(\d)/,
-            "($1) $2"
-        );
-
-        numeros = numeros.replace(
-            /(\d{4})(\d)/,
-            "$1-$2"
-        );
-
+    if (n.length <= 10) {
+        n = n.replace(/^(\d{2})(\d)/, "($1) $2");
+        n = n.replace(/(\d{4})(\d)/, "$1-$2");
     } else {
-
-        numeros = numeros.replace(
-            /(\d{2})(\d)/,
-            "($1) $2"
-        );
-
-        numeros = numeros.replace(
-            /(\d{5})(\d)/,
-            "$1-$2"
-        );
+        n = n.replace(/^(\d{2})(\d)/, "($1) $2");
+        n = n.replace(/(\d{5})(\d)/, "$1-$2");
     }
 
-    return numeros;
+    return n;
 }
-
 
 // ============================================================
 // MÁSCARA CEP
 // ============================================================
 
 function aplicarMascaraCEP(valor) {
+    let n = somenteNumeros(valor).slice(0, 8);
 
-    let numeros = somenteNumeros(valor);
-
-    if (numeros.length > 8) {
-        numeros = numeros.substring(0, 8);
+    if (n.length > 5) {
+        n = n.slice(0, 5) + "-" + n.slice(5);
     }
 
-    if (numeros.length > 5) {
-        numeros = numeros.replace(
-            /(\d{5})(\d)/,
-            "$1-$2"
-        );
-    }
-
-    return numeros;
+    return n;
 }
-
 
 // ============================================================
 // VALIDAÇÃO CNPJ
 // ============================================================
 
-function validarCNPJ(cnpj) {
+function validarCNPJ(valor) {
+    const cnpj = somenteNumeros(valor);
 
-    cnpj = somenteNumeros(cnpj);
-
-    if (cnpj.length !== 14) {
+    if (
+        cnpj.length !== 14 ||
+        /^(\d)\1{13}$/.test(cnpj)
+    ) {
         return false;
     }
 
-    // Impede CNPJs formados pelo mesmo número
-    if (/^(\d)\1{13}$/.test(cnpj)) {
-        return false;
+    function calcularDigito(base) {
+        const pesos = base.length === 12
+            ? [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
+            : [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+
+        const soma = [...base].reduce(
+            (total, digito, i) =>
+                total + Number(digito) * pesos[i],
+            0
+        );
+
+        const resto = soma % 11;
+
+        return resto < 2 ? 0 : 11 - resto;
     }
 
-    let tamanho = 12;
-    let numeros = cnpj.substring(0, tamanho);
-    let digitos = cnpj.substring(tamanho);
+    const primeiro = calcularDigito(cnpj.slice(0, 12));
 
-    let soma = 0;
-    let posicao = tamanho - 7;
+    const segundo = calcularDigito(
+        cnpj.slice(0, 12) + primeiro
+    );
 
-    for (let i = tamanho; i >= 1; i--) {
-
-        soma +=
-            parseInt(numeros.charAt(tamanho - i)) *
-            posicao;
-
-        posicao--;
-
-        if (posicao < 2) {
-            posicao = 9;
-        }
-    }
-
-    let resultado = soma % 11 < 2
-        ? 0
-        : 11 - (soma % 11);
-
-    if (resultado !== parseInt(digitos.charAt(0))) {
-        return false;
-    }
-
-    tamanho = 13;
-    numeros = cnpj.substring(0, tamanho);
-
-    soma = 0;
-    posicao = tamanho - 7;
-
-    for (let i = tamanho; i >= 1; i--) {
-
-        soma +=
-            parseInt(numeros.charAt(tamanho - i)) *
-            posicao;
-
-        posicao--;
-
-        if (posicao < 2) {
-            posicao = 9;
-        }
-    }
-
-    resultado = soma % 11 < 2
-        ? 0
-        : 11 - (soma % 11);
-
-    return resultado === parseInt(digitos.charAt(1));
+    return cnpj === cnpj.slice(0, 12) + primeiro + segundo;
 }
 
-
 // ============================================================
-// VALIDAÇÃO E-MAIL
+// VALIDAÇÃO DE E-MAIL
 // ============================================================
 
 function validarEmail(email) {
-
-    const regex =
-        /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-    return regex.test(email);
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
+// ============================================================
+// STATUS DO CEP
+// Cria o elemento de status se ele não existir no HTML.
+// ============================================================
+
+function mostrarStatusCep(mensagem, tipo = "info") {
+    const campoCEP = obterCampo("cep");
+
+    if (!campoCEP) return;
+
+    let status = obterCampo("cepStatus");
+
+    if (!status) {
+        status = document.createElement("small");
+        status.id = "cepStatus";
+        status.className = "d-block mb-2";
+
+        campoCEP.insertAdjacentElement("afterend", status);
+    }
+
+    status.textContent = mensagem;
+
+    status.className =
+        "d-block mb-2 " +
+        (
+            tipo === "ok"
+                ? "text-success"
+                : tipo === "erro"
+                    ? "text-danger"
+                    : "text-muted"
+        );
+}
 
 // ============================================================
 // CARREGAR ESTADOS
 // ============================================================
 
 async function carregarEstados() {
+    const campo = obterCampo("estado");
 
-    const campoEstado =
-        document.getElementById("estado");
+    if (!campo) return;
 
-    if (!campoEstado) {
-        return;
-    }
+    const estadosLocais = [
+        ["AC", "Acre"],
+        ["AL", "Alagoas"],
+        ["AP", "Amapá"],
+        ["AM", "Amazonas"],
+        ["BA", "Bahia"],
+        ["CE", "Ceará"],
+        ["DF", "Distrito Federal"],
+        ["ES", "Espírito Santo"],
+        ["GO", "Goiás"],
+        ["MA", "Maranhão"],
+        ["MT", "Mato Grosso"],
+        ["MS", "Mato Grosso do Sul"],
+        ["MG", "Minas Gerais"],
+        ["PA", "Pará"],
+        ["PB", "Paraíba"],
+        ["PR", "Paraná"],
+        ["PE", "Pernambuco"],
+        ["PI", "Piauí"],
+        ["RJ", "Rio de Janeiro"],
+        ["RN", "Rio Grande do Norte"],
+        ["RS", "Rio Grande do Sul"],
+        ["RO", "Rondônia"],
+        ["RR", "Roraima"],
+        ["SC", "Santa Catarina"],
+        ["SP", "São Paulo"],
+        ["SE", "Sergipe"],
+        ["TO", "Tocantins"]
+    ];
 
-    try {
+    // Preenche os estados localmente para não depender da API.
+    preencherSelect(
+        campo,
+        "Estado",
+        estadosLocais.map(([sigla, nome]) => ({
+            valor: sigla,
+            texto: nome
+        }))
+    );
 
-        campoEstado.disabled = true;
-
-        campoEstado.innerHTML =
-            '<option value="">Carregando estados...</option>';
-
-        const resposta = await fetch(
-            "https://brasilapi.com.br/api/ibge/uf/v1"
-        );
-
-        if (!resposta.ok) {
-            throw new Error(
-                "Erro ao carregar estados."
-            );
-        }
-
-        const estados =
-            await resposta.json();
-
-        estados.sort((a, b) =>
-            a.nome.localeCompare(b.nome)
-        );
-
-        campoEstado.innerHTML =
-            '<option value="">Estado</option>';
-
-        estados.forEach(estado => {
-
-            const option =
-                document.createElement("option");
-
-            option.value =
-                estado.sigla;
-
-            option.textContent =
-                estado.nome;
-
-            campoEstado.appendChild(option);
-        });
-
-        campoEstado.disabled = false;
-
-    } catch (erro) {
-
-        console.error(
-            "Erro ao carregar estados:",
-            erro
-        );
-
-        campoEstado.innerHTML =
-            '<option value="">Erro ao carregar estados</option>';
-    }
+    campo.disabled = false;
 }
 
-
 // ============================================================
-// CARREGAR CIDADES
+// CARREGAR CIDADES PELO IBGE
 // ============================================================
 
-async function carregarCidades(
-    uf,
-    cidadeSelecionada = ""
-) {
+async function carregarCidades(uf, cidadeSelecionada = "") {
+    const campo = obterCampo("cidade");
 
-    const campoCidade =
-        document.getElementById("cidade");
+    if (!campo) return;
 
-    if (!campoCidade || !uf) {
+    const minhaConsulta = ++consultaCidadesAtual;
+    const cidadeAlvo = String(cidadeSelecionada || "").trim();
+
+    if (!uf) {
+        preencherSelect(campo, "Cidade", []);
+        campo.disabled = true;
         return;
     }
 
-    campoCidade.disabled = true;
+    // Deixa a cidade recebida do CEP disponível imediatamente.
+    preencherSelect(
+        campo,
+        "Cidade",
+        cidadeAlvo
+            ? [{ valor: cidadeAlvo, texto: cidadeAlvo }]
+            : []
+    );
 
-    campoCidade.innerHTML =
-        '<option value="">Carregando cidades...</option>';
+    if (cidadeAlvo) {
+        campo.value = cidadeAlvo;
+    }
+
+    campo.disabled = !cidadeAlvo;
+
+    const controlador = new AbortController();
+
+    const temporizador = setTimeout(
+        () => controlador.abort(),
+        8000
+    );
 
     try {
-
         const resposta = await fetch(
-            `https://brasilapi.com.br/api/ibge/municipios/v1/${uf}?providers=dados-abertos-br,gov,wikipedia`
+            `${IBGE_URL}/estados/${encodeURIComponent(uf)}/municipios?orderBy=nome`,
+            { signal: controlador.signal }
         );
 
         if (!resposta.ok) {
             throw new Error(
-                "Erro ao carregar cidades."
+                `Falha ao carregar municípios: HTTP ${resposta.status}`
             );
         }
 
-        const cidades =
-            await resposta.json();
+        const cidades = await resposta.json();
+
+        if (!Array.isArray(cidades)) {
+            throw new Error("A API do IBGE não retornou uma lista válida.");
+        }
+
+        if (minhaConsulta !== consultaCidadesAtual) return;
 
         cidades.sort((a, b) =>
-            a.nome.localeCompare(b.nome)
+            a.nome.localeCompare(b.nome, "pt-BR")
         );
 
-        campoCidade.innerHTML =
-            '<option value="">Cidade</option>';
-
-        cidades.forEach(cidade => {
-
-            const option =
-                document.createElement("option");
-
-            option.value =
-                cidade.nome;
-
-            option.textContent =
-                cidade.nome;
-
-            campoCidade.appendChild(option);
-        });
-
-        campoCidade.disabled = false;
-
-        if (cidadeSelecionada) {
-
-            const opcao =
-                [...campoCidade.options].find(
-                    option =>
-                        option.value.toLowerCase() ===
-                        cidadeSelecionada.toLowerCase()
-                );
-
-            if (opcao) {
-                campoCidade.value =
-                    opcao.value;
-            }
-        }
+        preencherSelect(
+            campo,
+            "Cidade",
+            cidades.map(item => ({
+                valor: item.nome,
+                texto: item.nome
+            }))
+        );
 
     } catch (erro) {
+        if (minhaConsulta !== consultaCidadesAtual) return;
 
-        console.error(
-            "Erro ao carregar cidades:",
+        console.warn(
+            "Não foi possível carregar a lista do IBGE:",
             erro
         );
 
-        campoCidade.innerHTML =
-            '<option value="">Erro ao carregar cidades</option>';
-
-        campoCidade.disabled = true;
+    } finally {
+        clearTimeout(temporizador);
     }
+
+    if (minhaConsulta !== consultaCidadesAtual) return;
+
+    // Preserva a cidade retornada pelo CEP mesmo se o IBGE falhar.
+    if (cidadeAlvo) {
+        let opcao = Array.from(campo.options).find(
+            item =>
+                normalizarTexto(item.value) ===
+                normalizarTexto(cidadeAlvo)
+        );
+
+        if (!opcao) {
+            opcao = document.createElement("option");
+            opcao.value = cidadeAlvo;
+            opcao.textContent = cidadeAlvo;
+
+            campo.appendChild(opcao);
+        }
+
+        campo.value = opcao.value;
+    }
+
+    campo.disabled = false;
 }
-
-
-// ============================================================
-// BUSCAR CEP
-// ============================================================
-
-async function buscarCEP() {
-
-    const campoCEP =
-        document.getElementById("cep");
-
-    const campoEstado =
-        document.getElementById("estado");
-
-    const campoBairro =
-        document.getElementById("bairro");
-
-    const campoLogradouro =
-        document.getElementById("logradouro");
-
-    if (!campoCEP) {
-        return;
-    }
-
-    const cep =
-        somenteNumeros(campoCEP.value);
-
-    if (cep.length !== 8) {
-        return;
-    }
-
-    try {
-
-        // Aguarda os estados carregarem
-        if (estadosCarregamento) {
-            await estadosCarregamento;
-        }
-
-        const resposta = await fetch(
-            `https://viacep.com.br/ws/${cep}/json/`
-        );
-
-        if (!resposta.ok) {
-            throw new Error(
-                "Erro ao consultar CEP."
-            );
-        }
-
-        const dados =
-            await resposta.json();
-
-        if (dados.erro) {
-
-            alert(
-                "CEP não encontrado. Verifique o número informado."
-            );
-
-            limparEndereco();
-
-            return;
-        }
-
-
-        // ----------------------------------------------------
-        // BAIRRO
-        // ----------------------------------------------------
-
-        campoBairro.value =
-            dados.bairro || "";
-
-        campoBairro.readOnly =
-            !!dados.bairro;
-
-
-        // ----------------------------------------------------
-        // LOGRADOURO
-        // ----------------------------------------------------
-
-        campoLogradouro.value =
-            dados.logradouro || "";
-
-        campoLogradouro.readOnly =
-            !!dados.logradouro;
-
-
-        // ----------------------------------------------------
-        // ESTADO
-        // ----------------------------------------------------
-
-        if (dados.uf) {
-
-            campoEstado.value =
-                dados.uf;
-
-            await carregarCidades(
-                dados.uf,
-                dados.localidade
-            );
-        }
-
-    } catch (erro) {
-
-        console.error(
-            "Erro ao consultar CEP:",
-            erro
-        );
-
-        alert(
-            "Não foi possível consultar o CEP automaticamente. " +
-            "Você poderá preencher o endereço manualmente."
-        );
-
-        limparEndereco();
-    }
-}
-
 
 // ============================================================
 // LIMPAR ENDEREÇO
 // ============================================================
 
 function limparEndereco() {
+    const estado = obterCampo("estado");
+    const cidade = obterCampo("cidade");
+    const bairro = obterCampo("bairro");
+    const logradouro = obterCampo("logradouro");
+    const complemento = obterCampo("complemento");
 
-    const campoEstado =
-        document.getElementById("estado");
-
-    const campoCidade =
-        document.getElementById("cidade");
-
-    const campoBairro =
-        document.getElementById("bairro");
-
-    const campoLogradouro =
-        document.getElementById("logradouro");
-
-
-    if (campoEstado) {
-        campoEstado.value = "";
+    if (estado) {
+        estado.value = "";
     }
 
+    if (cidade) {
+        ++consultaCidadesAtual;
 
-    if (campoCidade) {
+        preencherSelect(cidade, "Cidade", []);
 
-        campoCidade.innerHTML =
-            '<option value="">Cidade</option>';
-
-        campoCidade.value = "";
-
-        campoCidade.disabled = true;
+        cidade.disabled = true;
     }
 
-
-    if (campoBairro) {
-
-        campoBairro.value = "";
-
-        campoBairro.readOnly = false;
-    }
-
-
-    if (campoLogradouro) {
-
-        campoLogradouro.value = "";
-
-        campoLogradouro.readOnly = false;
-    }
+    if (bairro) bairro.value = "";
+    if (logradouro) logradouro.value = "";
+    if (complemento) complemento.value = "";
 }
 
+// ============================================================
+// CONSULTAR CEP PELO VIACEP
+// Preenche o endereço ANTES de carregar os municípios.
+// ============================================================
+
+async function buscarCEP() {
+    const campoCEP = obterCampo("cep");
+
+    if (!campoCEP) return;
+
+    const cep = somenteNumeros(campoCEP.value);
+
+    if (cep.length !== 8) return;
+
+    // Evita duas consultas seguidas para o mesmo CEP.
+    if (
+        cep === ultimoCEPConsultado ||
+        cep === cepEmConsulta
+    ) {
+        return;
+    }
+
+    const minhaConsulta = ++consultaCEPAtual;
+
+    cepEmConsulta = cep;
+
+    const consultaValida = () =>
+        minhaConsulta === consultaCEPAtual &&
+        cep === somenteNumeros(campoCEP.value);
+
+    const controlador = new AbortController();
+
+    const temporizador = setTimeout(
+        () => controlador.abort(),
+        8000
+    );
+
+    mostrarStatusCep("Consultando CEP...", "info");
+
+    try {
+        // Aguarda os estados serem preparados.
+        await estadosCarregamento;
+
+        if (!consultaValida()) return;
+
+        const resposta = await fetch(
+            `${VIACEP_URL}/${cep}/json/`,
+            { signal: controlador.signal }
+        );
+
+        if (!resposta.ok) {
+            throw new Error(
+                `Falha no ViaCEP: HTTP ${resposta.status}`
+            );
+        }
+
+        const dados = await resposta.json();
+
+        if (!consultaValida()) return;
+
+        if (
+            dados.erro ||
+            !dados.uf ||
+            !dados.localidade
+        ) {
+            mostrarStatusCep(
+                "CEP não encontrado. Confira o número informado.",
+                "erro"
+            );
+
+            alert("CEP não encontrado. Confira o número informado.");
+
+            return;
+        }
+
+        const estado = obterCampo("estado");
+        const cidade = obterCampo("cidade");
+        const bairro = obterCampo("bairro");
+        const logradouro = obterCampo("logradouro");
+        const complemento = obterCampo("complemento");
+
+        if (!estado || !cidade) {
+            throw new Error(
+                "Não foram encontrados os campos de estado e cidade no HTML."
+            );
+        }
+
+        const uf = String(dados.uf).toUpperCase();
+
+        // ----------------------------------------------------
+        // 1. PREENCHER ESTADO
+        // ----------------------------------------------------
+
+        let opcaoEstado = Array.from(estado.options).find(
+            opcao => opcao.value.toUpperCase() === uf
+        );
+
+        if (!opcaoEstado) {
+            opcaoEstado = document.createElement("option");
+            opcaoEstado.value = uf;
+            opcaoEstado.textContent = uf;
+
+            estado.appendChild(opcaoEstado);
+        }
+
+        estado.value = uf;
+        estado.disabled = false;
+
+        // ----------------------------------------------------
+        // 2. PREENCHER O ENDEREÇO IMEDIATAMENTE
+        // Não depende da lista de municípios do IBGE.
+        // ----------------------------------------------------
+
+        if (bairro) {
+            bairro.value = dados.bairro || "";
+        }
+
+        if (logradouro) {
+            logradouro.value = dados.logradouro || "";
+        }
+
+        if (complemento) {
+            complemento.value = dados.complemento || "";
+        }
+
+        // ----------------------------------------------------
+        // 3. PREENCHER A CIDADE IMEDIATAMENTE
+        // ----------------------------------------------------
+
+        preencherSelect(cidade, "Cidade", [
+            {
+                valor: dados.localidade,
+                texto: dados.localidade
+            }
+        ]);
+
+        cidade.value = dados.localidade;
+        cidade.disabled = false;
+
+        // Marca o CEP como consultado.
+        ultimoCEPConsultado = cep;
+
+        mostrarStatusCep(
+            "Endereço encontrado. Informe o número e confira os dados.",
+            "ok"
+        );
+
+        // ----------------------------------------------------
+        // 4. CARREGAR A LISTA COMPLETA DO IBGE
+        // A falha nesta etapa não apaga o endereço preenchido.
+        // ----------------------------------------------------
+
+        try {
+            await carregarCidades(uf, dados.localidade);
+        } catch (erroCidades) {
+            console.warn("Falha ao carregar cidades:", erroCidades);
+        }
+
+    } catch (erro) {
+        if (!consultaValida()) return;
+
+        // Permite tentar novamente depois de uma falha.
+        ultimoCEPConsultado = "";
+
+        console.error("Erro ao consultar CEP:", erro);
+
+        mostrarStatusCep(
+            "Não foi possível consultar o CEP. Confira sua conexão e tente novamente.",
+            "erro"
+        );
+
+        alert(
+            "Não foi possível consultar o CEP pelo ViaCEP.\n" +
+            "Verifique a conexão e tente novamente."
+        );
+
+    } finally {
+        clearTimeout(temporizador);
+
+        if (cepEmConsulta === cep) {
+            cepEmConsulta = "";
+        }
+    }
+}
 
 // ============================================================
 // OBTER SERVIÇOS
 // ============================================================
 
 function obterServicos() {
-
-    const servicos = [];
-
-    document
-        .querySelectorAll(
-            'input[name="servicos"]:checked'
-        )
-        .forEach(item => {
-
-            if (item.id === "servicoOutro") {
-                return;
-            }
-
-            servicos.push(item.value);
-        });
-
-
-    const outro =
-        document.getElementById(
-            "servicoOutro"
-        );
-
-    const outroTexto =
-        document.getElementById(
-            "servicoOutroTexto"
-        );
-
-
-    if (
-        outro &&
-        outro.checked &&
-        outroTexto &&
-        outroTexto.value.trim()
-    ) {
-
-        servicos.push(
-            `Outro: ${outroTexto.value.trim()}`
-        );
-    }
-
-
-    return servicos;
+    return Array.from(
+        document.querySelectorAll('input[name="servicos"]:checked')
+    ).map(item => item.value);
 }
-
 
 // ============================================================
 // OBTER PRAZO
 // ============================================================
 
 function obterPrazo() {
-
-    const prazo =
-        document.querySelector(
-            'input[name="prazo"]:checked'
-        );
-
-    return prazo
-        ? prazo.value
-        : "";
+    return document.querySelector(
+        'input[name="prazo"]:checked'
+    )?.value || "";
 }
 
+// ============================================================
+// COLETAR DADOS DO FORMULÁRIO
+// ============================================================
+
+function obterDadosFormulario() {
+    const estado = obterCampo("estado");
+    const servicosSelecionados = obterServicos();
+    const campoOutroTexto = obterCampo("servicoOutroTexto");
+
+    const outroDescricao = campoOutroTexto
+        ? campoOutroTexto.value.trim()
+        : "";
+
+    return {
+        razaoSocial: obterCampo("razaoSocial").value.trim(),
+        nomeFantasia: obterCampo("nomeFantasia").value.trim(),
+        cnpj: obterCampo("cnpj").value.trim(),
+        email: obterCampo("email").value.trim(),
+        telefone: obterCampo("telefone").value.trim(),
+        responsavel: obterCampo("responsavel").value.trim(),
+
+        area: Number(
+            obterCampo("area").value.replace(",", ".")
+        ),
+
+        prazo: obterPrazo(),
+        cep: obterCampo("cep").value.trim(),
+        estado: estado.value,
+        estadoTexto: estado.selectedOptions[0]?.text || "",
+        cidade: obterCampo("cidade").value.trim(),
+        bairro: obterCampo("bairro").value.trim(),
+        logradouro: obterCampo("logradouro").value.trim(),
+        numero: obterCampo("numero").value.trim(),
+        complemento: obterCampo("complemento").value.trim(),
+
+        servicos: servicosSelecionados.filter(
+            nome => nome !== "Outro"
+        ),
+
+        outroDescricao: servicosSelecionados.includes("Outro")
+            ? outroDescricao
+            : ""
+    };
+}
 
 // ============================================================
-// GERAR PDF CNPJ
+// VALIDAR FORMULÁRIO
 // ============================================================
 
-async function gerarPDF(event) {
-
-    if (event) {
-        event.preventDefault();
+function validarDados(d) {
+    if (!validarCNPJ(d.cnpj)) {
+        return "Informe um CNPJ válido.";
     }
 
-    const formulario =
-        document.getElementById(
-            "formOrcamentoPJ"
-        );
-
-
-    if (!formulario.checkValidity()) {
-
-        formulario.reportValidity();
-
-        return;
+    if (!validarEmail(d.email)) {
+        return "Informe um e-mail válido.";
     }
-
-
-    // ========================================================
-    // DADOS DA EMPRESA
-    // ========================================================
-
-    const razaoSocial =
-        document.getElementById(
-            "razaoSocial"
-        ).value.trim();
-
-
-    const nomeFantasia =
-        document.getElementById(
-            "nomeFantasia"
-        ).value.trim();
-
-
-    const cnpj =
-        document.getElementById(
-            "cnpj"
-        ).value.trim();
-
-
-    const email =
-        document.getElementById(
-            "email"
-        ).value.trim();
-
-
-    const telefone =
-        document.getElementById(
-            "telefone"
-        ).value.trim();
-
-
-    const responsavel =
-        document.getElementById(
-            "responsavel"
-        ).value.trim();
-
-
-    // ========================================================
-    // VALIDAÇÕES
-    // ========================================================
-
-    if (!validarCNPJ(cnpj)) {
-
-        alert(
-            "Informe um CNPJ válido."
-        );
-
-        document
-            .getElementById("cnpj")
-            .focus();
-
-        return;
-    }
-
-
-    if (!validarEmail(email)) {
-
-        alert(
-            "Informe um e-mail válido."
-        );
-
-        document
-            .getElementById("email")
-            .focus();
-
-        return;
-    }
-
-
-    // ========================================================
-    // SERVIÇOS
-    // ========================================================
-
-    const servicos =
-        obterServicos();
-
-
-    if (servicos.length === 0) {
-
-        alert(
-            "Selecione pelo menos um serviço."
-        );
-
-        return;
-    }
-
-
-    // ========================================================
-    // ÁREA
-    // ========================================================
-
-    const area =
-        document.getElementById(
-            "area"
-        ).value.trim();
-
-
-    const areaNumerica =
-        parseFloat(
-            area.replace(",", ".")
-        );
-
 
     if (
-        isNaN(areaNumerica) ||
-        areaNumerica <= 0
+        !d.razaoSocial ||
+        !d.nomeFantasia ||
+        !d.responsavel
     ) {
-
-        alert(
-            "Informe uma área válida."
-        );
-
-        document
-            .getElementById("area")
-            .focus();
-
-        return;
+        return "Preencha os dados da empresa e do responsável.";
     }
 
+    const telefone = somenteNumeros(d.telefone);
 
-    // ========================================================
-    // PRAZO
-    // ========================================================
-
-    const prazo =
-        obterPrazo();
-
-
-    if (!prazo) {
-
-        alert(
-            "Selecione o prazo desejado."
-        );
-
-        return;
+    if (telefone.length !== 10 && telefone.length !== 11) {
+        return "Informe um telefone válido, incluindo o DDD.";
     }
 
+    if (!Number.isFinite(d.area) || d.area <= 0) {
+        return "Informe uma área válida.";
+    }
 
-    // ========================================================
-    // ENDEREÇO
-    // ========================================================
+    if (!d.prazo) {
+        return "Selecione o prazo desejado.";
+    }
 
-    const cep =
-        document.getElementById(
-            "cep"
-        ).value.trim();
+    const servicosSelecionados = obterServicos();
 
+    if (servicosSelecionados.length === 0) {
+        return "Selecione pelo menos um serviço.";
+    }
 
-    const estado =
-        document.getElementById(
-            "estado"
+    if (
+        servicosSelecionados.includes("Outro") &&
+        !d.outroDescricao
+    ) {
+        return "Descreva o serviço selecionado em 'Outro'.";
+    }
+
+    if (somenteNumeros(d.cep).length !== 8) {
+        return "Informe um CEP válido.";
+    }
+
+    if (
+        !d.estado ||
+        !d.cidade ||
+        !d.bairro ||
+        !d.logradouro ||
+        !d.numero
+    ) {
+        return "Preencha todos os campos obrigatórios do endereço.";
+    }
+
+    return null;
+}
+
+// ============================================================
+// GERAR PDF
+// ============================================================
+
+function gerarPDF(d, codigoOrcamento) {
+    if (!window.jspdf?.jsPDF) {
+        throw new Error(
+            "A biblioteca jsPDF não foi carregada. Confira o HTML."
         );
+    }
 
+    const { jsPDF } = window.jspdf;
 
-    const estadoTexto =
-        estado.options[
-            estado.selectedIndex
-        ]?.text || "";
+    const pdf = new jsPDF({
+        unit: "mm",
+        format: "a4"
+    });
 
-
-    const cidade =
-        document.getElementById(
-            "cidade"
-        ).value.trim();
-
-
-    const bairro =
-        document.getElementById(
-            "bairro"
-        ).value.trim();
-
-
-    const logradouro =
-        document.getElementById(
-            "logradouro"
-        ).value.trim();
-
-
-    const numero =
-        document.getElementById(
-            "numero"
-        ).value.trim();
-
-
-    const complemento =
-        document.getElementById(
-            "complemento"
-        ).value.trim();
-
-
-    // ========================================================
-    // CRIA PDF
-    // ========================================================
-
-    const { jsPDF } =
-        window.jspdf;
-
-
-    const pdf =
-        new jsPDF();
-
+    const margem = 18;
+    const largura = 174;
 
     let y = 20;
 
-
-    pdf.setFontSize(18);
-
-    pdf.text(
-        "Solicitação de Orçamento para CNPJ",
-        20,
-        y
-    );
-
-
-    y += 15;
-
-
-    pdf.setFontSize(12);
-
-
-    // ========================================================
-    // EMPRESA
-    // ========================================================
-
-    pdf.text(
-        "DADOS DA EMPRESA",
-        20,
-        y
-    );
-
-    y += 8;
-
-
-    pdf.text(
-        `Razão Social: ${razaoSocial}`,
-        20,
-        y
-    );
-
-    y += 7;
-
-
-    pdf.text(
-        `Nome Fantasia: ${nomeFantasia}`,
-        20,
-        y
-    );
-
-    y += 7;
-
-
-    pdf.text(
-        `CNPJ: ${cnpj}`,
-        20,
-        y
-    );
-
-    y += 7;
-
-
-    pdf.text(
-        `E-mail: ${email}`,
-        20,
-        y
-    );
-
-    y += 7;
-
-
-    pdf.text(
-        `Telefone: ${telefone}`,
-        20,
-        y
-    );
-
-    y += 7;
-
-
-    pdf.text(
-        `Responsável: ${responsavel}`,
-        20,
-        y
-    );
-
-    y += 12;
-
-
-    // ========================================================
-    // SERVIÇOS
-    // ========================================================
-
-    pdf.text(
-        "SERVIÇOS",
-        20,
-        y
-    );
-
-    y += 8;
-
-
-    servicos.forEach(servico => {
-
-        pdf.text(
-            `• ${servico}`,
-            25,
-            y
-        );
-
-        y += 7;
-    });
-
-
-    y += 5;
-
-
-    pdf.text(
-        `Área aproximada: ${areaNumerica} m²`,
-        20,
-        y
-    );
-
-    y += 7;
-
-
-    pdf.text(
-        `Prazo desejado: ${prazo}`,
-        20,
-        y
-    );
-
-    y += 12;
-
-
-    // ========================================================
-    // ENDEREÇO
-    // ========================================================
-
-    pdf.text(
-        "ENDEREÇO DA EMPRESA",
-        20,
-        y
-    );
-
-    y += 8;
-
-
-    pdf.text(
-        `CEP: ${cep}`,
-        20,
-        y
-    );
-
-    y += 7;
-
-
-    pdf.text(
-        `Estado: ${estadoTexto}`,
-        20,
-        y
-    );
-
-    y += 7;
-
-
-    pdf.text(
-        `Cidade: ${cidade}`,
-        20,
-        y
-    );
-
-    y += 7;
-
-
-    pdf.text(
-        `Bairro: ${bairro}`,
-        20,
-        y
-    );
-
-    y += 7;
-
-
-    pdf.text(
-        `Logradouro: ${logradouro}`,
-        20,
-        y
-    );
-
-    y += 7;
-
-
-    pdf.text(
-        `Número: ${numero}`,
-        20,
-        y
-    );
-
-    y += 7;
-
-
-    if (complemento) {
-
-        pdf.text(
-            `Complemento: ${complemento}`,
-            20,
-            y
-        );
-
-        y += 7;
+    function verificarNovaPagina(altura) {
+        if (y + altura > 280) {
+            pdf.addPage();
+            y = 20;
+        }
     }
 
+    function titulo(texto) {
+        verificarNovaPagina(14);
 
-    // ========================================================
+        pdf.setFont("helvetica", "bold");
+        pdf.setFontSize(12);
+
+        pdf.text(texto, margem, y);
+
+        y += 7;
+
+        pdf.setDrawColor(180);
+        pdf.line(margem, y, margem + largura, y);
+
+        y += 5;
+    }
+
+    function textoRotulado(rotulo, valor) {
+        const texto = `${rotulo}: ${valor || "-"}`;
+
+        pdf.setFont("helvetica", "normal");
+        pdf.setFontSize(10);
+
+        const linhas = pdf.splitTextToSize(texto, largura);
+        const altura = linhas.length * 5;
+
+        verificarNovaPagina(altura);
+
+        pdf.text(linhas, margem, y);
+
+        y += altura + 1;
+    }
+
+    // --------------------------------------------------------
+    // CABEÇALHO
+    // --------------------------------------------------------
+
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(16);
+
+    pdf.text(
+        "Sabino Gesso",
+        margem,
+        y
+    );
+
+    y += 8;
+
+    pdf.setFont("helvetica", "normal");
+    pdf.setFontSize(12);
+
+    pdf.text(
+        "Solicitação de orçamento - Pessoa Jurídica",
+        margem,
+        y
+    );
+
+    y += 8;
+
+    textoRotulado(
+        "Data da solicitação",
+        new Date().toLocaleDateString("pt-BR")
+    );
+
+    if (codigoOrcamento) {
+        textoRotulado(
+            "Código do orçamento",
+            codigoOrcamento
+        );
+    }
+
+    y += 3;
+
+    // --------------------------------------------------------
+    // DADOS DA EMPRESA
+    // --------------------------------------------------------
+
+    titulo("DADOS DA EMPRESA");
+
+    textoRotulado("Razão social", d.razaoSocial);
+    textoRotulado("Nome fantasia", d.nomeFantasia);
+    textoRotulado("CNPJ", d.cnpj);
+    textoRotulado("Responsável", d.responsavel);
+    textoRotulado("E-mail", d.email);
+    textoRotulado("Telefone", d.telefone);
+
+    y += 3;
+
+    // --------------------------------------------------------
+    // DADOS DO SERVIÇO
+    // --------------------------------------------------------
+
+    titulo("SERVIÇOS SOLICITADOS");
+
+    const listaServicos = [
+        ...d.servicos,
+        ...(d.outroDescricao
+            ? [`Outro: ${d.outroDescricao}`]
+            : [])
+    ];
+
+    textoRotulado("Serviços", listaServicos.join(", "));
+    textoRotulado("Área aproximada", `${d.area} m²`);
+    textoRotulado("Prazo desejado", d.prazo);
+
+    y += 3;
+
+    // --------------------------------------------------------
+    // ENDEREÇO
+    // --------------------------------------------------------
+
+    titulo("ENDEREÇO DA EMPRESA");
+
+    textoRotulado("CEP", d.cep);
+    textoRotulado("Estado", d.estadoTexto || d.estado);
+    textoRotulado("Cidade", d.cidade);
+    textoRotulado("Bairro", d.bairro);
+    textoRotulado("Logradouro", d.logradouro);
+    textoRotulado("Número", d.numero);
+    textoRotulado("Complemento", d.complemento);
+
+    // --------------------------------------------------------
     // SALVAR PDF
-    // ========================================================
+    // --------------------------------------------------------
 
-    const nomeArquivo =
-        `orcamento-${razaoSocial
-            .replace(/\s+/g, "-")
-            .toLowerCase()}.pdf`;
+    const nomeSeguro = d.razaoSocial
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^a-zA-Z0-9_-]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .toLowerCase() || "empresa";
 
+    const codigoSeguro = codigoOrcamento
+        ? "-" + String(codigoOrcamento)
+            .replace(/[^a-zA-Z0-9_-]/g, "")
+        : "";
 
-    pdf.save(nomeArquivo);
+    pdf.save(
+        `orcamento-${nomeSeguro}${codigoSeguro}.pdf`
+    );
 }
 
-
 // ============================================================
-// WHATSAPP
+// ENVIAR AO BANCO E GERAR PDF
 // ============================================================
 
-function enviarWhatsApp() {
+async function gerarPDFEEnviar(event) {
+    event.preventDefault();
 
-    const razaoSocial =
-        document.getElementById(
-            "razaoSocial"
-        ).value.trim();
+    if (envioEmAndamento) return;
 
+    const formulario = obterCampo("formOrcamentoPJ");
 
-    const nomeFantasia =
-        document.getElementById(
-            "nomeFantasia"
-        ).value.trim();
+    if (!formulario) {
+        alert("O formulário não foi encontrado.");
+        return;
+    }
 
+    if (!formulario.checkValidity()) {
+        formulario.reportValidity();
+        return;
+    }
 
-    const cnpj =
-        document.getElementById(
-            "cnpj"
-        ).value.trim();
+    const dados = obterDadosFormulario();
+    const erroValidacao = validarDados(dados);
 
+    if (erroValidacao) {
+        alert(erroValidacao);
+        return;
+    }
 
-    const email =
-        document.getElementById(
-            "email"
-        ).value.trim();
+    const botaoSubmit = formulario.querySelector(
+        'button[type="submit"], input[type="submit"]'
+    );
 
+    const botaoGerarPDF = obterCampo("btnGerarPDF");
 
-    const telefone =
-        document.getElementById(
-            "telefone"
-        ).value.trim();
+    const textoOriginal = botaoSubmit
+        ? botaoSubmit.textContent
+        : "";
 
+    envioEmAndamento = true;
 
-    const responsavel =
-        document.getElementById(
-            "responsavel"
-        ).value.trim();
+    if (botaoSubmit) {
+        botaoSubmit.disabled = true;
+        botaoSubmit.textContent = "Enviando...";
+    }
 
+    if (botaoGerarPDF) {
+        botaoGerarPDF.setAttribute("aria-disabled", "true");
+    }
 
-    const area =
-        document.getElementById(
-            "area"
-        ).value.trim();
+    try {
+        // 1. Salvar o orçamento no banco por meio da rota POST.
+        // Esta função não executa DELETE nem apaga registros anteriores.
 
+        const resposta = await fetch(API_URL, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify(dados)
+        });
 
-    const prazo =
-        obterPrazo();
+        const resultado = await resposta.json().catch(() => ({}));
 
+        if (!resposta.ok) {
+            throw new Error(
+                resultado.erro ||
+                resultado.mensagem ||
+                `Falha ao salvar o orçamento (HTTP ${resposta.status}).`
+            );
+        }
 
-    const cep =
-        document.getElementById(
-            "cep"
-        ).value.trim();
+        // 2. Gerar o PDF depois da confirmação de salvamento.
+        const codigoOrcamento =
+            resultado.codigo ??
+            resultado.codigoOrcamento ??
+            resultado.id ??
+            null;
 
+        try {
+            gerarPDF(dados, codigoOrcamento);
 
-    const estado =
-        document.getElementById(
-            "estado"
+            alert(
+                "Orçamento salvo no banco e PDF gerado com sucesso." +
+                (
+                    codigoOrcamento
+                        ? `\nCódigo: ${codigoOrcamento}`
+                        : ""
+                )
+            );
+
+        } catch (erroPDF) {
+            console.error("Erro ao gerar PDF:", erroPDF);
+
+            alert(
+                "O orçamento foi salvo no banco, mas não foi possível gerar o PDF.\n\n" +
+                erroPDF.message
+            );
+        }
+
+    } catch (erro) {
+        console.error("Erro ao enviar orçamento:", erro);
+
+        alert(
+            "Não foi possível confirmar o salvamento do orçamento.\n" +
+            "Verifique se o servidor e o banco estão funcionando.\n\n" +
+            erro.message
         );
 
+    } finally {
+        envioEmAndamento = false;
 
-    const estadoTexto =
-        estado.options[
-            estado.selectedIndex
-        ]?.text || "";
+        if (botaoSubmit) {
+            botaoSubmit.disabled = false;
+            botaoSubmit.textContent = textoOriginal;
+        }
 
+        if (botaoGerarPDF) {
+            botaoGerarPDF.removeAttribute("aria-disabled");
+        }
+    }
+}
 
-    const cidade =
-        document.getElementById(
-            "cidade"
-        ).value.trim();
+// ============================================================
+// ENVIAR PELO WHATSAPP
+// ============================================================
 
+function enviarWhatsApp(event) {
+    event.preventDefault();
 
-    const bairro =
-        document.getElementById(
-            "bairro"
-        ).value.trim();
+    const formulario = obterCampo("formOrcamentoPJ");
 
+    if (!formulario.checkValidity()) {
+        formulario.reportValidity();
+        return;
+    }
 
-    const logradouro =
-        document.getElementById(
-            "logradouro"
-        ).value.trim();
+    const dados = obterDadosFormulario();
+    const erro = validarDados(dados);
 
+    if (erro) {
+        alert(erro);
+        return;
+    }
 
-    const numero =
-        document.getElementById(
-            "numero"
-        ).value.trim();
-
-
-    const complemento =
-        document.getElementById(
-            "complemento"
-        ).value.trim();
-
-
-    const servicos =
-        obterServicos();
-
-
-    // ========================================================
-    // MENSAGEM
-    // ========================================================
+    const listaServicos = [
+        ...dados.servicos,
+        ...(dados.outroDescricao
+            ? [`Outro: ${dados.outroDescricao}`]
+            : [])
+    ];
 
     const mensagem = `
 Olá! Gostaria de solicitar um orçamento.
 
 *DADOS DA EMPRESA*
-
-Razão Social: ${razaoSocial}
-Nome Fantasia: ${nomeFantasia}
-CNPJ: ${cnpj}
-E-mail: ${email}
-Telefone: ${telefone}
-Responsável: ${responsavel}
+Razão Social: ${dados.razaoSocial}
+Nome Fantasia: ${dados.nomeFantasia}
+CNPJ: ${dados.cnpj}
+E-mail: ${dados.email}
+Telefone: ${dados.telefone}
+Responsável: ${dados.responsavel}
 
 *SERVIÇOS*
+${listaServicos.map(item => `• ${item}`).join("\n")}
 
-${servicos
-    .map(servico => `• ${servico}`)
-    .join("\n")}
-
-Área aproximada: ${area} m²
-Prazo desejado: ${prazo}
+Área aproximada: ${dados.area} m²
+Prazo desejado: ${dados.prazo}
 
 *ENDEREÇO*
-
-CEP: ${cep}
-Estado: ${estadoTexto}
-Cidade: ${cidade}
-Bairro: ${bairro}
-Logradouro: ${logradouro}
-Número: ${numero}
-Complemento: ${complemento}
-    `.trim();
-
+CEP: ${dados.cep}
+Estado: ${dados.estadoTexto}
+Cidade: ${dados.cidade}
+Bairro: ${dados.bairro}
+Logradouro: ${dados.logradouro}
+Número: ${dados.numero}
+Complemento: ${dados.complemento}
+`.trim();
 
     const url =
-        `https://wa.me/${NUMERO_WHATSAPP_EMPRESA}?text=${encodeURIComponent(
-            mensagem
-        )}`;
+        `https://wa.me/${NUMERO_WHATSAPP_EMPRESA}` +
+        `?text=${encodeURIComponent(mensagem)}`;
 
-
-    window.open(
-        url,
-        "_blank"
-    );
+    window.open(url, "_blank", "noopener,noreferrer");
 }
-
 
 // ============================================================
 // INICIALIZAÇÃO
 // ============================================================
 
-document.addEventListener(
-    "DOMContentLoaded",
-    () => {
+document.addEventListener("DOMContentLoaded", () => {
+    const cnpj = obterCampo("cnpj");
+    const telefone = obterCampo("telefone");
+    const cep = obterCampo("cep");
+    const estado = obterCampo("estado");
+    const outro = obterCampo("servicoOutro");
+    const outroTexto = obterCampo("servicoOutroTexto");
+    const formulario = obterCampo("formOrcamentoPJ");
+    const botaoWhatsApp = obterCampo("btnWhatsApp");
+    const botaoGerarPDF = obterCampo("btnGerarPDF");
 
-        // ----------------------------------------------------
-        // CARREGAR ESTADOS
-        // ----------------------------------------------------
+    estadosCarregamento = carregarEstados();
 
-        estadosCarregamento =
-            carregarEstados();
+    // CNPJ
+    cnpj?.addEventListener("input", () => {
+        cnpj.value = aplicarMascaraCNPJ(cnpj.value);
+    });
 
+    // Telefone
+    telefone?.addEventListener("input", () => {
+        telefone.value = aplicarMascaraTelefone(telefone.value);
+    });
 
-        // ----------------------------------------------------
-        // CAMPOS
-        // ----------------------------------------------------
+    // CEP: consulta quando os oito dígitos forem digitados.
+    cep?.addEventListener("input", () => {
+        cep.value = aplicarMascaraCEP(cep.value);
 
-        const campoCNPJ =
-            document.getElementById(
-                "cnpj"
-            );
+        const numeros = somenteNumeros(cep.value);
 
+        if (numeros.length === 8) {
+            buscarCEP();
+        } else {
+            // Invalida uma consulta anterior se o CEP for alterado.
+            ++consultaCEPAtual;
+            ultimoCEPConsultado = "";
+            cepEmConsulta = "";
 
-        const campoTelefone =
-            document.getElementById(
-                "telefone"
-            );
-
-
-        const campoCEP =
-            document.getElementById(
-                "cep"
-            );
-
-
-        const campoEstado =
-            document.getElementById(
-                "estado"
-            );
-
-
-        const campoOutro =
-            document.getElementById(
-                "servicoOutro"
-            );
-
-
-        const campoOutroTexto =
-            document.getElementById(
-                "servicoOutroTexto"
-            );
-
-
-        const formulario =
-            document.getElementById(
-                "formOrcamentoPJ"
-            );
-
-
-        const botaoWhatsApp =
-            document.getElementById(
-                "btnWhatsApp"
-            );
-
-
-        // ----------------------------------------------------
-        // CNPJ
-        // ----------------------------------------------------
-
-        if (campoCNPJ) {
-
-            campoCNPJ.addEventListener(
-                "input",
-                () => {
-
-                    campoCNPJ.value =
-                        aplicarMascaraCNPJ(
-                            campoCNPJ.value
-                        );
-                }
-            );
+            mostrarStatusCep("", "info");
         }
+    });
 
-
-        // ----------------------------------------------------
-        // TELEFONE
-        // ----------------------------------------------------
-
-        if (campoTelefone) {
-
-            campoTelefone.addEventListener(
-                "input",
-                () => {
-
-                    campoTelefone.value =
-                        aplicarMascaraTelefone(
-                            campoTelefone.value
-                        );
-                }
-            );
+    // Também consulta quando o usuário sai do campo.
+    cep?.addEventListener("blur", () => {
+        if (somenteNumeros(cep.value).length === 8) {
+            buscarCEP();
         }
+    });
 
+    // Se o usuário trocar manualmente o estado, recarrega as cidades.
+    estado?.addEventListener("change", () => {
+        carregarCidades(estado.value);
+    });
 
-        // ----------------------------------------------------
-        // CEP
-        // ----------------------------------------------------
+    // Campo "Outro" serviço.
+    function atualizarCampoOutro() {
+        if (!outro || !outroTexto) return;
 
-        if (campoCEP) {
+        outroTexto.disabled = !outro.checked;
+        outroTexto.required = outro.checked;
 
-            campoCEP.addEventListener(
-                "input",
-                () => {
-
-                    campoCEP.value =
-                        aplicarMascaraCEP(
-                            campoCEP.value
-                        );
-
-                    const cep =
-                        somenteNumeros(
-                            campoCEP.value
-                        );
-
-                    if (cep.length === 8) {
-                        buscarCEP();
-                    }
-                }
-            );
-
-
-            campoCEP.addEventListener(
-                "blur",
-                buscarCEP
-            );
+        if (!outro.checked) {
+            outroTexto.value = "";
         }
-
-
-        // ----------------------------------------------------
-        // ESTADO
-        // ----------------------------------------------------
-
-        if (campoEstado) {
-
-            campoEstado.addEventListener(
-                "change",
-                () => {
-
-                    const uf =
-                        campoEstado.value;
-
-
-                    const campoCidade =
-                        document.getElementById(
-                            "cidade"
-                        );
-
-
-                    if (uf) {
-
-                        carregarCidades(
-                            uf
-                        );
-
-                    } else {
-
-                        campoCidade.innerHTML =
-                            '<option value="">Cidade</option>';
-
-                        campoCidade.disabled =
-                            true;
-                    }
-                }
-            );
-        }
-
-
-        // ----------------------------------------------------
-        // OUTRO SERVIÇO
-        // ----------------------------------------------------
-
-        if (
-            campoOutro &&
-            campoOutroTexto
-        ) {
-
-            campoOutro.addEventListener(
-                "change",
-                () => {
-
-                    if (campoOutro.checked) {
-
-                        campoOutroTexto.disabled =
-                            false;
-
-                        campoOutroTexto.required =
-                            true;
-
-                        campoOutroTexto.focus();
-
-                    } else {
-
-                        campoOutroTexto.value =
-                            "";
-
-                        campoOutroTexto.disabled =
-                            true;
-
-                        campoOutroTexto.required =
-                            false;
-                    }
-                }
-            );
-        }
-
-
-        // ----------------------------------------------------
-        // FORMULÁRIO
-        // ----------------------------------------------------
-
-        if (formulario) {
-
-            formulario.addEventListener(
-                "submit",
-                gerarPDF
-            );
-        }
-
-
-        // ----------------------------------------------------
-        // WHATSAPP
-        // ----------------------------------------------------
-
-        if (botaoWhatsApp) {
-
-            botaoWhatsApp.addEventListener(
-                "click",
-                enviarWhatsApp
-            );
-        }
-
     }
-);
+
+    outro?.addEventListener("change", atualizarCampoOutro);
+    atualizarCampoOutro();
+
+    // Envia para o banco e gera o PDF.
+    formulario?.addEventListener("submit", gerarPDFEEnviar);
+
+    // O ícone de PDF inicia o mesmo processo de envio e geração.
+    botaoGerarPDF?.addEventListener("click", event => {
+        event.preventDefault();
+
+        if (envioEmAndamento) return;
+
+        formulario?.requestSubmit();
+    });
+
+    // WhatsApp.
+    botaoWhatsApp?.addEventListener("click", enviarWhatsApp);
+});

@@ -4,12 +4,16 @@
 //      node server.js
 //
 // Variáveis de ambiente (arquivo .env ao lado do server.js):
-//   DB_HOST, DB_PORT, DB_USER, DB_PASSWORD (obrigatória), DB_NAME
+//   DB_HOST, DB_PORT (padrão 3306), DB_USER, DB_PASSWORD (obrigatória), DB_NAME
 //   CORS_ORIGIN  -> origens permitidas, separadas por vírgula
 //                   ex.: https://sabinogesso.com.br,https://www.sabinogesso.com.br
 //   API_TOKEN    -> token exigido na listagem (GET /api/orcamentos)
+//   TRUST_PROXY  -> nº de proxies à frente do servidor (ex.: 1 com Nginx,
+//                   Cloudflare, Render). Padrão: 0 (sem proxy)
 //   NODE_ENV     -> "production" em produção
 //   PORT
+//
+// Requer express-rate-limit v7 ou superior (usa a opção "limit").
 // ============================================================
 
 try {
@@ -26,11 +30,6 @@ const rateLimit = require("express-rate-limit");
 
 const EM_PRODUCAO = process.env.NODE_ENV === "production";
 
-// ============================================================
-// CONFIGURAÇÃO OBRIGATÓRIA
-// Sem senha definida o servidor não sobe (nada de root/root).
-// ============================================================
-
 if (!process.env.DB_PASSWORD) {
     console.error(
         "ERRO: defina a variável de ambiente DB_PASSWORD antes de iniciar."
@@ -39,6 +38,14 @@ if (!process.env.DB_PASSWORD) {
 }
 
 const app = express();
+
+// Atrás de proxy reverso, sem isso todos os usuários teriam o mesmo IP
+// e o rate limit valeria para o site inteiro.
+const trustProxy = Number(process.env.TRUST_PROXY) || 0;
+
+if (trustProxy > 0) {
+    app.set("trust proxy", trustProxy);
+}
 
 // ============================================================
 // CORS RESTRITO
@@ -72,7 +79,13 @@ app.use(cors({
             return callback(null, true); // somente em desenvolvimento
         }
 
-        return callback(null, origensPermitidas.includes(origin));
+        if (origensPermitidas.includes(origin)) {
+            return callback(null, true);
+        }
+
+        const erro = new Error("Origem não permitida.");
+        erro.status = 403;
+        return callback(erro);
     }
 }));
 
@@ -259,6 +272,14 @@ function validarEntrada(d) {
         return "Número inválido.";
     }
 
+    if (texto(d.complemento).length > 150) {
+        return "Complemento muito longo (máximo 150 caracteres).";
+    }
+
+    if (texto(d.observacoes).length > 2000) {
+        return "Observações muito longas (máximo 2000 caracteres).";
+    }
+
     if (!Array.isArray(d.servicos) || d.servicos.length === 0) {
         return "Selecione pelo menos um serviço.";
     }
@@ -273,13 +294,360 @@ function validarEntrada(d) {
 
     return null;
 }
+function validarCNPJServidor(valor) {
+    const cnpj = soDigitos(valor);
+
+    if (cnpj.length !== 14 || /^(\d)\1{13}$/.test(cnpj)) {
+        return false;
+    }
+
+    function calcularDigito(base) {
+        const pesos = base.length === 12
+            ? [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
+            : [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+
+        const soma = [...base].reduce(
+            (total, digito, i) =>
+                total + Number(digito) * pesos[i],
+            0
+        );
+
+        const resto = soma % 11;
+        return resto < 2 ? 0 : 11 - resto;
+    }
+
+    const primeiro = calcularDigito(cnpj.slice(0, 12));
+    const segundo = calcularDigito(cnpj.slice(0, 12) + primeiro);
+
+    return cnpj === cnpj.slice(0, 12) + primeiro + segundo;
+}
+
+
+ // ============================================================
+ // POST /api/orcamentos/pj
+ // Cria um orçamento novo sem excluir os anteriores.
+ // ============================================================
+
+ app.post("/api/orcamentos/pj", limitePost, async function (req, res) {
+    const d = req.body || {};
+    const texto = valor => String(valor ?? "").trim();
+
+    const razaoSocial = texto(d.razaoSocial);
+    const nomeFantasia = texto(d.nomeFantasia);
+    const responsavel = texto(d.responsavel);
+    const cnpj = soDigitos(d.cnpj);
+    const email = texto(d.email).toLowerCase();
+    const telefone = soDigitos(d.telefone);
+    const cepDigitos = soDigitos(d.cep);
+    const uf = texto(d.estado).toUpperCase();
+    const cidade = texto(d.cidade);
+    const bairro = texto(d.bairro);
+    const logradouro = texto(d.logradouro);
+    const numero = texto(d.numero);
+    const complemento = texto(d.complemento) || null;
+    const area = Number(d.area);
+    const prazo = texto(d.prazo);
+
+    if (!razaoSocial || razaoSocial.length > 150) {
+        return res.status(400).json({ erro: "Razão social inválida." });
+    }
+
+    if (!nomeFantasia || nomeFantasia.length > 150) {
+        return res.status(400).json({ erro: "Nome fantasia inválido." });
+    }
+
+    if (!responsavel || responsavel.length > 150) {
+        return res.status(400).json({ erro: "Responsável inválido." });
+    }
+
+    if (!validarCNPJServidor(cnpj)) {
+        return res.status(400).json({ erro: "CNPJ inválido." });
+    }
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 150) {
+        return res.status(400).json({ erro: "E-mail inválido." });
+    }
+
+    if (!validarTelefone(telefone)) {
+        return res.status(400).json({ erro: "Telefone inválido." });
+    }
+
+    if (!Number.isFinite(area) || area <= 0 || area >= 100000000) {
+        return res.status(400).json({ erro: "Área inválida." });
+    }
+
+    if (!PRAZOS.includes(prazo)) {
+        return res.status(400).json({ erro: "Prazo inválido." });
+    }
+
+    if (cepDigitos.length !== 8) {
+        return res.status(400).json({ erro: "CEP inválido." });
+    }
+
+    if (!/^[A-Z]{2}$/.test(uf)) {
+        return res.status(400).json({ erro: "Estado inválido." });
+    }
+
+    if (!cidade || cidade.length > 100) {
+        return res.status(400).json({ erro: "Cidade inválida." });
+    }
+
+    if (!bairro || bairro.length > 100) {
+        return res.status(400).json({ erro: "Bairro inválido." });
+    }
+
+    if (!logradouro || logradouro.length > 150) {
+        return res.status(400).json({ erro: "Logradouro inválido." });
+    }
+
+    if (!numero || numero.length > 20) {
+        return res.status(400).json({ erro: "Número inválido." });
+    }
+
+    if (complemento && complemento.length > 150) {
+        return res.status(400).json({ erro: "Complemento muito longo." });
+    }
+
+    const servicosRecebidos = Array.isArray(d.servicos)
+        ? d.servicos.map(String)
+        : [];
+
+    const outroDescricao = texto(d.outroDescricao);
+
+    const servicosPedidos = [
+        ...new Set([
+            ...servicosRecebidos.filter(nome => nome !== "Outro"),
+            ...(outroDescricao ? ["Outro"] : [])
+        ])
+    ];
+
+    if (servicosPedidos.length === 0) {
+        return res.status(400).json({
+            erro: "Selecione pelo menos um serviço."
+        });
+    }
+
+    if (outroDescricao.length > 150) {
+        return res.status(400).json({
+            erro: "A descrição do serviço deve ter até 150 caracteres."
+        });
+    }
+
+    let conexao;
+    let transacaoIniciada = false;
+
+    try {
+        conexao = await pool.getConnection();
+        await conexao.beginTransaction();
+        transacaoIniciada = true;
+
+        // Confere os serviços cadastrados no banco.
+        const [servicosBanco] = await conexao.query(
+            "SELECT id, nome FROM servicos WHERE ativo = TRUE"
+        );
+
+        const mapaServicos = {};
+
+        servicosBanco.forEach(servico => {
+            mapaServicos[servico.nome] = servico.id;
+        });
+
+        const servicoInvalido = servicosPedidos.find(
+            nome => !Object.prototype.hasOwnProperty.call(mapaServicos, nome)
+        );
+
+        if (servicoInvalido) {
+            throw new Error(`Serviço não cadastrado ou inativo: ${servicoInvalido}`);
+        }
+
+        // Reutiliza o cadastro da empresa, se o CNPJ já existir.
+        // Não atualiza nem exclui o cadastro existente.
+        const [clientesExistentes] = await conexao.query(
+            `SELECT id, codigo, tipo_cliente
+             FROM clientes
+             WHERE documento = ?
+             LIMIT 1
+             FOR UPDATE`,
+            [cnpj]
+        );
+
+        let clienteId;
+        let clienteCodigo;
+
+        if (clientesExistentes.length > 0) {
+            const cliente = clientesExistentes[0];
+
+            if (cliente.tipo_cliente !== "PJ") {
+                await conexao.rollback();
+                transacaoIniciada = false;
+
+                return res.status(409).json({
+                    erro: "O documento já está cadastrado como Pessoa Física."
+                });
+            }
+
+            clienteId = cliente.id;
+            clienteCodigo = cliente.codigo;
+
+        } else {
+            // Cria a empresa somente quando o CNPJ ainda não existe.
+            const [novoCliente] = await conexao.query(
+                `INSERT INTO clientes
+                    (codigo, tipo_cliente, nome, documento, email, telefone,
+                     nome_fantasia, responsavel)
+                 VALUES (?, 'PJ', ?, ?, ?, ?, ?, ?)`,
+                [
+                    codigoTemporario(),
+                    razaoSocial,
+                    cnpj,
+                    email,
+                    telefone,
+                    nomeFantasia,
+                    responsavel
+                ]
+            );
+
+            clienteId = novoCliente.insertId;
+            clienteCodigo = `CLI-${pad(clienteId, 4)}`;
+
+            await conexao.query(
+                "UPDATE clientes SET codigo = ? WHERE id = ?",
+                [clienteCodigo, clienteId]
+            );
+
+            // Endereço cadastral inicial da empresa.
+            const cepFormatado =
+                `${cepDigitos.slice(0, 5)}-${cepDigitos.slice(5)}`;
+
+            await conexao.query(
+                `INSERT INTO enderecos
+                    (cliente_id, cep, estado, cidade, bairro,
+                     logradouro, numero, complemento)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+                [
+                    clienteId,
+                    cepFormatado,
+                    uf,
+                    cidade,
+                    bairro,
+                    logradouro,
+                    numero,
+                    complemento
+                ]
+            );
+        }
+
+        const cepFormatado =
+            `${cepDigitos.slice(0, 5)}-${cepDigitos.slice(5)}`;
+
+        // Cada envio cria uma nova linha em orcamentos.
+        const [novoOrcamento] = await conexao.query(
+            `INSERT INTO orcamentos
+                (codigo, cliente_id, nome_informado,
+                 nome_fantasia_informado, responsavel_informado,
+                 email_informado, telefone_informado,
+                 area, prazo, observacoes)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+                codigoTemporario(),
+                clienteId,
+                razaoSocial,
+                nomeFantasia,
+                responsavel,
+                email,
+                telefone,
+                area,
+                prazo,
+                null
+            ]
+        );
+
+        const orcamentoId = novoOrcamento.insertId;
+
+        const codigo =
+            `ORC-${new Date().getFullYear()}-${pad(orcamentoId, 4)}`;
+
+        await conexao.query(
+            "UPDATE orcamentos SET codigo = ? WHERE id = ?",
+            [codigo, orcamentoId]
+        );
+
+        // Guarda um endereço próprio para este orçamento.
+        await conexao.query(
+            `INSERT INTO enderecos_orcamento
+                (orcamento_id, cep, estado, cidade, bairro,
+                 logradouro, numero, complemento)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+                orcamentoId,
+                cepFormatado,
+                uf,
+                cidade,
+                bairro,
+                logradouro,
+                numero,
+                complemento
+            ]
+        );
+
+        // Registra os serviços escolhidos para este orçamento.
+        for (const nomeServico of servicosPedidos) {
+            await conexao.query(
+                `INSERT INTO orcamento_servicos
+                    (orcamento_id, servico_id, outro_descricao)
+                 VALUES (?, ?, ?)`,
+                [
+                    orcamentoId,
+                    mapaServicos[nomeServico],
+                    nomeServico === "Outro" ? outroDescricao : null
+                ]
+            );
+        }
+
+        await conexao.commit();
+        transacaoIniciada = false;
+
+        return res.status(201).json({
+            mensagem: "Orçamento PJ criado com sucesso.",
+            codigo,
+            clienteCodigo
+        });
+
+    } catch (erro) {
+        if (conexao && transacaoIniciada) {
+            try {
+                await conexao.rollback();
+            } catch (erroRollback) {
+                console.error("Erro no rollback do orçamento PJ:", erroRollback);
+            }
+        }
+
+        console.error("Erro ao salvar orçamento PJ:", erro);
+
+        return res.status(
+            erro.message?.startsWith("Serviço não cadastrado") ? 400 : 500
+        ).json({
+            erro: erro.message?.startsWith("Serviço não cadastrado")
+                ? erro.message
+                : "Erro ao salvar o orçamento PJ. Confira o terminal do servidor."
+        });
+
+    } finally {
+        if (conexao) {
+            conexao.release();
+        }
+    }
+});
+
 
 // ============================================================
 // POST /api/orcamentos
-// - Cliente novo: cria o cadastro e o endereço cadastral.
-// - Cliente existente (mesmo CPF): NÃO altera nenhum dado dele;
-//   apenas vincula o novo orçamento ao cadastro.
-// - O endereço do serviço fica sempre em enderecos_orcamento.
+// Nada é apagado nem sobrescrito:
+// - Cliente novo: cria cadastro e endereço cadastral.
+// - Cliente existente (mesmo CPF): dados do cadastro ficam
+//   intactos; o novo orçamento é vinculado a ele e guarda os
+//   dados de contato informados naquele envio.
+// - Todo orçamento gera um registro novo, com endereço próprio.
 // ============================================================
 
 app.post("/api/orcamentos", limitePost, async function (req, res) {
@@ -293,8 +661,8 @@ app.post("/api/orcamentos", limitePost, async function (req, res) {
 
     const nome = String(d.nome).trim();
     const documento = soDigitos(d.cpf);
-    const email = String(d.email).trim();
-    const telefone = String(d.telefone).trim();
+    const email = String(d.email).trim().toLowerCase();
+    const telefone = soDigitos(d.telefone);
 
     const cepLimpo = soDigitos(d.cep);
     const cep = `${cepLimpo.slice(0, 5)}-${cepLimpo.slice(5)}`;
@@ -305,8 +673,8 @@ app.post("/api/orcamentos", limitePost, async function (req, res) {
     const logradouro = String(d.logradouro).trim();
     const numero = String(d.numero).trim();
 
-    const observacoes = String(d.complemento ?? "").trim();
-    const complemento = observacoes.slice(0, 150) || null;
+    const complemento = String(d.complemento ?? "").trim() || null;
+    const observacoes = String(d.observacoes ?? "").trim() || null;
 
     const servicosPedidos = [...new Set(d.servicos.map(String))];
 
@@ -350,10 +718,7 @@ app.post("/api/orcamentos", limitePost, async function (req, res) {
         // CLIENTE
         // ----------------------------------------------------
 
-        let clienteId;
-        let clienteCodigo;
-
-        const [existente] = await conexao.query(
+        const buscarCliente = () => conexao.query(
             `SELECT id, codigo
              FROM clientes
              WHERE documento = ?
@@ -362,26 +727,40 @@ app.post("/api/orcamentos", limitePost, async function (req, res) {
             [documento]
         );
 
-        if (existente.length > 0) {
-            // Cliente já cadastrado: nada é sobrescrito.
-            clienteId = existente[0].id;
-            clienteCodigo = existente[0].codigo;
+        let clienteId;
+        let clienteCodigo;
+        let clienteNovo = false;
 
-        } else {
-            const [novo] = await conexao.query(
-                `INSERT INTO clientes
-                    (codigo, tipo_cliente, nome, documento, email, telefone)
-                 VALUES (?, 'PF', ?, ?, ?, ?)`,
-                [
-                    codigoTemporario(),
-                    nome,
-                    documento,
-                    email,
-                    telefone
-                ]
-            );
+        let [existente] = await buscarCliente();
 
-            clienteId = novo.insertId;
+        if (existente.length === 0) {
+            try {
+                const [novo] = await conexao.query(
+                    `INSERT INTO clientes
+                        (codigo, tipo_cliente, nome, documento, email, telefone)
+                     VALUES (?, 'PF', ?, ?, ?, ?)`,
+                    [codigoTemporario(), nome, documento, email, telefone]
+                );
+
+                clienteId = novo.insertId;
+                clienteNovo = true;
+
+            } catch (erroInsert) {
+                // Outro envio com o mesmo CPF foi gravado ao mesmo tempo:
+                // reaproveita o cadastro dele em vez de dar erro.
+                if (erroInsert.code !== "ER_DUP_ENTRY") {
+                    throw erroInsert;
+                }
+
+                [existente] = await buscarCliente();
+
+                if (existente.length === 0) {
+                    throw erroInsert;
+                }
+            }
+        }
+
+        if (clienteNovo) {
             clienteCodigo = `CLI-${pad(clienteId, 4)}`;
 
             await conexao.query(
@@ -396,32 +775,34 @@ app.post("/api/orcamentos", limitePost, async function (req, res) {
                      logradouro, numero, complemento)
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
                 [
-                    clienteId,
-                    cep,
-                    estado,
-                    cidade,
-                    bairro,
-                    logradouro,
-                    numero,
-                    complemento
+                    clienteId, cep, estado, cidade, bairro,
+                    logradouro, numero, complemento
                 ]
             );
+
+        } else {
+            clienteId = existente[0].id;
+            clienteCodigo = existente[0].codigo;
         }
 
         // ----------------------------------------------------
-        // ORÇAMENTO
+        // ORÇAMENTO (sempre um registro novo)
         // ----------------------------------------------------
 
         const [orcamento] = await conexao.query(
             `INSERT INTO orcamentos
-                (codigo, cliente_id, area, prazo, observacoes)
-             VALUES (?, ?, ?, ?, ?)`,
+                (codigo, cliente_id, nome_informado, email_informado,
+                 telefone_informado, area, prazo, observacoes)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
             [
                 codigoTemporario(),
                 clienteId,
+                nome,
+                email,
+                telefone,
                 Number(d.area),
                 d.prazo,
-                observacoes || null
+                observacoes
             ]
         );
 
@@ -436,7 +817,7 @@ app.post("/api/orcamentos", limitePost, async function (req, res) {
         );
 
         // ----------------------------------------------------
-        // ENDEREÇO DO SERVIÇO (histórico de cada orçamento)
+        // ENDEREÇO DO SERVIÇO
         // ----------------------------------------------------
 
         await conexao.query(
@@ -445,14 +826,8 @@ app.post("/api/orcamentos", limitePost, async function (req, res) {
                  logradouro, numero, complemento)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
             [
-                orcamentoId,
-                cep,
-                estado,
-                cidade,
-                bairro,
-                logradouro,
-                numero,
-                complemento
+                orcamentoId, cep, estado, cidade, bairro,
+                logradouro, numero, complemento
             ]
         );
 
@@ -493,7 +868,6 @@ app.post("/api/orcamentos", limitePost, async function (req, res) {
             }
         }
 
-        // Detalhes técnicos ficam só no log do servidor.
         console.error("Erro ao salvar orçamento:", erro);
 
         return res.status(500).json({
@@ -509,7 +883,7 @@ app.post("/api/orcamentos", limitePost, async function (req, res) {
 
 // ============================================================
 // GET /api/orcamentos   (PROTEGIDA POR TOKEN)
-// Lista os orçamentos para o projetos.js.
+// Paginação opcional: ?pagina=1&limite=200 (limite máx. 500)
 // ============================================================
 
 app.get(
@@ -518,8 +892,15 @@ app.get(
     exigirToken,
     async function (req, res) {
         try {
-            const [orcamentos] = await pool.query(`
-                SELECT
+            const limite = Math.min(
+                Math.max(parseInt(req.query.limite, 10) || 200, 1),
+                500
+            );
+            const pagina = Math.max(parseInt(req.query.pagina, 10) || 1, 1);
+            const deslocamento = (pagina - 1) * limite;
+
+            const [orcamentos] = await pool.query(
+                `SELECT
                     o.id,
                     o.codigo,
                     o.area,
@@ -531,6 +912,9 @@ app.get(
                     o.criado_em AS criadoEm,
                     c.codigo AS clienteCodigo,
                     c.nome AS clienteNome,
+                    o.nome_informado AS nomeInformado,
+                    o.email_informado AS emailInformado,
+                    o.telefone_informado AS telefoneInformado,
                     e.cep,
                     e.estado,
                     e.cidade,
@@ -541,31 +925,39 @@ app.get(
                 FROM orcamentos o
                 JOIN clientes c ON c.id = o.cliente_id
                 LEFT JOIN enderecos_orcamento e ON e.orcamento_id = o.id
-                ORDER BY o.criado_em DESC
-            `);
-
-            const [servicos] = await pool.query(`
-                SELECT
-                    os.orcamento_id,
-                    s.nome,
-                    os.outro_descricao
-                FROM orcamento_servicos os
-                JOIN servicos s ON s.id = os.servico_id
-            `);
+                ORDER BY o.criado_em DESC, o.id DESC
+                LIMIT ? OFFSET ?`,
+                [limite, deslocamento]
+            );
 
             const servicosPorOrcamento = {};
 
-            servicos.forEach(function (item) {
-                if (!servicosPorOrcamento[item.orcamento_id]) {
-                    servicosPorOrcamento[item.orcamento_id] = [];
-                }
+            if (orcamentos.length > 0) {
+                const ids = orcamentos.map(o => o.id);
 
-                servicosPorOrcamento[item.orcamento_id].push(
-                    item.nome === "Outro" && item.outro_descricao
-                        ? item.outro_descricao
-                        : item.nome
+                const [servicos] = await pool.query(
+                    `SELECT
+                        os.orcamento_id,
+                        s.nome,
+                        os.outro_descricao
+                    FROM orcamento_servicos os
+                    JOIN servicos s ON s.id = os.servico_id
+                    WHERE os.orcamento_id IN (?)`,
+                    [ids]
                 );
-            });
+
+                servicos.forEach(function (item) {
+                    if (!servicosPorOrcamento[item.orcamento_id]) {
+                        servicosPorOrcamento[item.orcamento_id] = [];
+                    }
+
+                    servicosPorOrcamento[item.orcamento_id].push(
+                        item.nome === "Outro" && item.outro_descricao
+                            ? item.outro_descricao
+                            : item.nome
+                    );
+                });
+            }
 
             const resultado = orcamentos.map(function (o) {
                 return {
@@ -588,6 +980,360 @@ app.get(
         }
     }
 );
+
+// ============================================================
+// TRATAMENTO DE ERROS (sempre responde em JSON)
+// ============================================================
+
+app.use(function (req, res) {
+    res.status(404).json({ erro: "Rota não encontrada." });
+});
+
+app.use(function (erro, req, res, next) {
+    if (erro.type === "entity.parse.failed") {
+        return res.status(400).json({ erro: "JSON inválido." });
+    }
+
+    if (erro.type === "entity.too.large") {
+        return res.status(413).json({ erro: "Requisição muito grande." });
+    }
+
+    if (erro.status === 403) {
+        return res.status(403).json({ erro: erro.message });
+    }
+
+    console.error("Erro não tratado:", erro);
+
+    return res.status(500).json({ erro: "Erro interno do servidor." });
+});
+
+
+/* ============================================================
+   PROJETOS - ÁREA ADMINISTRATIVA
+   Usa a tabela projetos do banco sabino_gesso.
+   Não exclui nem substitui orçamentos existentes.
+============================================================ */
+
+// GET /api/projetos
+// Lista projetos cadastrados e seus dados relacionados.
+app.get("/api/projetos", async function (req, res) {
+    try {
+        const [projetos] = await pool.query(`
+            SELECT
+                p.id,
+                p.codigo AS projetoCodigo,
+                p.status AS projetoStatus,
+                p.progresso,
+                p.data_inicio AS dataInicio,
+                p.data_previsao AS dataPrevisao,
+                p.data_conclusao AS dataConclusao,
+                p.observacoes AS projetoObservacoes,
+                p.criado_em AS criadoEm,
+
+                o.id AS orcamentoId,
+                o.codigo AS orcamentoCodigo,
+                o.area,
+                o.prazo,
+                o.valor,
+                o.status AS orcamentoStatus,
+
+                c.codigo AS clienteCodigo,
+                c.nome AS clienteNome,
+                c.email AS clienteEmail,
+                c.telefone AS clienteTelefone
+
+            FROM projetos p
+            INNER JOIN orcamentos o
+                ON o.id = p.orcamento_id
+            INNER JOIN clientes c
+                ON c.id = o.cliente_id
+            ORDER BY p.criado_em DESC
+        `);
+
+        const [servicos] = await pool.query(`
+            SELECT
+                os.orcamento_id,
+                s.nome,
+                os.outro_descricao
+            FROM orcamento_servicos os
+            INNER JOIN servicos s
+                ON s.id = os.servico_id
+        `);
+
+        const servicosPorOrcamento = {};
+
+        for (const item of servicos) {
+            if (!servicosPorOrcamento[item.orcamento_id]) {
+                servicosPorOrcamento[item.orcamento_id] = [];
+            }
+
+            servicosPorOrcamento[item.orcamento_id].push(
+                item.nome === "Outro" && item.outro_descricao
+                    ? `Outro: ${item.outro_descricao}`
+                    : item.nome
+            );
+        }
+
+        const resultado = projetos.map(projeto => ({
+            ...projeto,
+            area: Number(projeto.area),
+            valor: Number(projeto.valor),
+            progresso: Number(projeto.progresso),
+            servicos: servicosPorOrcamento[projeto.orcamentoId] || []
+        }));
+
+        return res.json(resultado);
+
+    } catch (erro) {
+        console.error("Erro ao listar projetos:", erro);
+
+        return res.status(500).json({
+            erro: "Não foi possível carregar os projetos."
+        });
+    }
+});
+
+
+// POST /api/projetos
+// Cria um projeto para um orçamento aprovado.
+// O mesmo orçamento não pode gerar dois projetos.
+app.post("/api/projetos", async function (req, res) {
+    const orcamentoId = Number(req.body.orcamentoId);
+
+    if (!Number.isInteger(orcamentoId) || orcamentoId <= 0) {
+        return res.status(400).json({
+            erro: "Informe um ID de orçamento válido."
+        });
+    }
+
+    let conexao;
+
+    try {
+        conexao = await pool.getConnection();
+        await conexao.beginTransaction();
+
+        const [orcamentos] = await conexao.query(
+            `SELECT id, codigo, status
+             FROM orcamentos
+             WHERE id = ?
+             FOR UPDATE`,
+            [orcamentoId]
+        );
+
+        if (orcamentos.length === 0) {
+            await conexao.rollback();
+
+            return res.status(404).json({
+                erro: "Orçamento não encontrado."
+            });
+        }
+
+        const orcamento = orcamentos[0];
+
+        if (orcamento.status !== "Aprovado") {
+            await conexao.rollback();
+
+            return res.status(400).json({
+                erro: "Somente orçamentos aprovados podem virar projetos."
+            });
+        }
+
+        const [existentes] = await conexao.query(
+            `SELECT id, codigo
+             FROM projetos
+             WHERE orcamento_id = ?`,
+            [orcamentoId]
+        );
+
+        if (existentes.length > 0) {
+            await conexao.rollback();
+
+            return res.status(409).json({
+                erro: "Este orçamento já possui um projeto.",
+                projetoCodigo: existentes[0].codigo
+            });
+        }
+
+        const [insercao] = await conexao.query(
+            `INSERT INTO projetos
+                (orcamento_id, codigo, status, progresso)
+             VALUES (?, ?, 'Em andamento', 0)`,
+            [
+                orcamentoId,
+                `TMP${require("crypto").randomBytes(8).toString("hex")}`
+            ]
+        );
+
+        const projetoId = insercao.insertId;
+        const codigoProjeto = `PRJ-${String(projetoId).padStart(4, "0")}`;
+
+        await conexao.query(
+            "UPDATE projetos SET codigo = ? WHERE id = ?",
+            [codigoProjeto, projetoId]
+        );
+
+        await conexao.commit();
+
+        return res.status(201).json({
+            mensagem: "Projeto criado com sucesso.",
+            id: projetoId,
+            codigo: codigoProjeto,
+            orcamentoCodigo: orcamento.codigo
+        });
+
+    } catch (erro) {
+        if (conexao) {
+            try {
+                await conexao.rollback();
+            } catch (erroRollback) {
+                console.error("Erro no rollback:", erroRollback);
+            }
+        }
+
+        console.error("Erro ao criar projeto:", erro);
+
+        return res.status(500).json({
+            erro: "Não foi possível criar o projeto."
+        });
+
+    } finally {
+        if (conexao) conexao.release();
+    }
+});
+
+
+// PATCH /api/projetos/:id
+// Atualiza status, progresso, datas e observações.
+app.patch("/api/projetos/:id", async function (req, res) {
+    const id = Number(req.params.id);
+
+    if (!Number.isInteger(id) || id <= 0) {
+        return res.status(400).json({
+            erro: "ID de projeto inválido."
+        });
+    }
+
+    const permitidos = [
+        "Em andamento",
+        "Pausado",
+        "Concluído",
+        "Cancelado"
+    ];
+
+    const { status, progresso, dataInicio, dataPrevisao,
+        dataConclusao, observacoes } = req.body;
+
+    if (status !== undefined && !permitidos.includes(status)) {
+        return res.status(400).json({
+            erro: "Status de projeto inválido."
+        });
+    }
+
+    if (
+        progresso !== undefined &&
+        (!Number.isInteger(Number(progresso)) ||
+         Number(progresso) < 0 ||
+         Number(progresso) > 100)
+    ) {
+        return res.status(400).json({
+            erro: "O progresso deve ser um número entre 0 e 100."
+        });
+    }
+
+    const dataValida = valor =>
+        valor === null ||
+        valor === "" ||
+        (typeof valor === "string" &&
+         /^\d{4}-\d{2}-\d{2}$/.test(valor));
+
+    for (const data of [dataInicio, dataPrevisao, dataConclusao]) {
+        if (data !== undefined && !dataValida(data)) {
+            return res.status(400).json({
+                erro: "Data inválida. Use o formato AAAA-MM-DD."
+            });
+        }
+    }
+
+    try {
+        const [existentes] = await pool.query(
+            "SELECT id FROM projetos WHERE id = ?",
+            [id]
+        );
+
+        if (existentes.length === 0) {
+            return res.status(404).json({
+                erro: "Projeto não encontrado."
+            });
+        }
+
+        const campos = [];
+        const valores = [];
+
+        if (status !== undefined) {
+            campos.push("status = ?");
+            valores.push(status);
+        }
+
+        if (progresso !== undefined) {
+            campos.push("progresso = ?");
+            valores.push(Number(progresso));
+        }
+
+        if (dataInicio !== undefined) {
+            campos.push("data_inicio = ?");
+            valores.push(dataInicio || null);
+        }
+
+        if (dataPrevisao !== undefined) {
+            campos.push("data_previsao = ?");
+            valores.push(dataPrevisao || null);
+        }
+
+        if (dataConclusao !== undefined) {
+            campos.push("data_conclusao = ?");
+            valores.push(dataConclusao || null);
+        }
+
+        if (observacoes !== undefined) {
+            if (typeof observacoes !== "string") {
+                return res.status(400).json({
+                    erro: "As observações devem ser um texto."
+                });
+            }
+
+            campos.push("observacoes = ?");
+            valores.push(observacoes.trim() || null);
+        }
+
+        if (campos.length === 0) {
+            return res.status(400).json({
+                erro: "Nenhum campo foi informado para atualização."
+            });
+        }
+
+        valores.push(id);
+
+        await pool.query(
+            `UPDATE projetos
+             SET ${campos.join(", ")}
+             WHERE id = ?`,
+            valores
+        );
+
+        return res.json({
+            mensagem: "Projeto atualizado com sucesso."
+        });
+
+    } catch (erro) {
+        console.error("Erro ao atualizar projeto:", erro);
+
+        return res.status(500).json({
+            erro: "Não foi possível atualizar o projeto."
+        });
+    }
+});
+
+
 
 // ============================================================
 // INICIAR SERVIDOR

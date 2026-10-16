@@ -5,13 +5,9 @@
 
     <meta charset="utf-8">
 
-    <meta
-        name="viewport"
-        content="width=device-width, initial-scale=1"
-    >
+    <meta name="viewport" content="width=device-width, initial-scale=1">
 
     <title>Orçamento - Sabino Gesso</title>
-
 
     <!-- BOOTSTRAP -->
     <link
@@ -26,21 +22,15 @@
     >
 
     <!-- CSS DO FORMULÁRIO -->
-    <link
-        rel="stylesheet"
-        href="../view/css/view_forms.css"
-    >
+    <link rel="stylesheet" href="../view/css/view_forms.css">
 
     <!-- jsPDF -->
-    <script
-        src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js">
-    </script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
 </head>
 
 
 <body>
-
 
     <!-- ==================================================
          NAVBAR
@@ -52,10 +42,7 @@
 
             <!-- LOGO -->
             <div class="logo-formulario">
-                <img
-                    src="../img/logo.png"
-                    alt="Sabino Gesso"
-                >
+                <img src="../img/logo.png" alt="Sabino Gesso">
             </div>
 
             <!-- BOTÃO MOBILE -->
@@ -67,22 +54,16 @@
                 aria-controls="menu"
                 aria-expanded="false"
                 aria-label="Abrir menu">
-
                 <span class="navbar-toggler-icon"></span>
-
             </button>
 
             <!-- MENU -->
-            <div
-                class="collapse navbar-collapse"
-                id="menu">
+            <div class="collapse navbar-collapse" id="menu">
 
-                <ul class="navbar-nav ms-auto align-items-lg-center mx-auto">
+                <ul class="navbar-nav ms-auto align-items-lg-center">
 
                     <li class="nav-item ms-lg-3 menu">
-                        <a
-                            class="nav-link text-black fs-4"
-                            href="index.html">
+                        <a class="nav-link text-black fs-4" href="index.html">
                             Início
                         </a>
                     </li>
@@ -116,33 +97,25 @@
 
         <!-- LOGO -->
         <div class="logo-formulario">
-            <img
-                src="../img/logo.png"
-                alt="Sabino Gesso">
+            <img src="../img/logo.png" alt="Sabino Gesso">
         </div>
 
-        <!-- TÍTULO -->
-        <h1>
-            Orçamento para CPF
-        </h1>
+        <h1>Orçamento para CPF</h1>
 
-        <div class="subtitulo">
-            Pessoa Física
-        </div>
+        <div class="subtitulo">Pessoa Física</div>
 
 
         <form id="formOrcamentoPF">
-
 
             <!-- =================================================
                  DADOS DO CLIENTE
             ================================================== -->
 
             <h2>
+                <i class="bi bi-person-fill"></i>
                 Dados do cliente:
             </h2>
 
-            <!-- NOME -->
             <label for="nome" class="visually-hidden">Nome completo</label>
             <input
                 id="nome"
@@ -155,7 +128,6 @@
                 required
             >
 
-            <!-- CPF -->
             <label for="cpf" class="visually-hidden">CPF</label>
             <input
                 type="text"
@@ -168,7 +140,6 @@
                 required
             >
 
-            <!-- E-MAIL -->
             <label for="email" class="visually-hidden">E-mail</label>
             <input
                 id="email"
@@ -181,7 +152,6 @@
                 required
             >
 
-            <!-- TELEFONE -->
             <label for="telefone" class="visually-hidden">Telefone</label>
             <input
                 id="telefone"
@@ -201,69 +171,36 @@
             ================================================== -->
 
             <h2>
+                <i class="bi bi-tools"></i>
                 Sobre o serviço:
             </h2>
 
-            <span class="rotulo-pequeno">
-                Tipo de serviço
-            </span>
+            <span class="rotulo-pequeno">Tipo de serviço</span>
 
             <div class="d-flex flex-wrap mb-2">
 
-                <!-- SANCA -->
                 <div class="form-check-pill">
-                    <input
-                        class="form-check-input"
-                        type="checkbox"
-                        id="servicoSanca"
-                        name="servicos"
-                        value="Sanca"
-                    >
-                    <label for="servicoSanca">
-                        Sanca
-                    </label>
+                    <input class="form-check-input" type="checkbox"
+                        id="servicoSanca" name="servicos" value="Sanca">
+                    <label for="servicoSanca">Sanca</label>
                 </div>
 
-                <!-- FORRO -->
                 <div class="form-check-pill">
-                    <input
-                        class="form-check-input"
-                        type="checkbox"
-                        id="servicoForro"
-                        name="servicos"
-                        value="Forro rebaixado"
-                    >
-                    <label for="servicoForro">
-                        Forro rebaixado
-                    </label>
+                    <input class="form-check-input" type="checkbox"
+                        id="servicoForro" name="servicos" value="Forro rebaixado">
+                    <label for="servicoForro">Forro rebaixado</label>
                 </div>
 
-                <!-- MOLDURA -->
                 <div class="form-check-pill">
-                    <input
-                        class="form-check-input"
-                        type="checkbox"
-                        id="servicoMoldura"
-                        name="servicos"
-                        value="Moldura decorativa"
-                    >
-                    <label for="servicoMoldura">
-                        Moldura decorativa
-                    </label>
+                    <input class="form-check-input" type="checkbox"
+                        id="servicoMoldura" name="servicos" value="Moldura decorativa">
+                    <label for="servicoMoldura">Moldura decorativa</label>
                 </div>
 
-                <!-- DIVISÓRIA -->
                 <div class="form-check-pill">
-                    <input
-                        class="form-check-input"
-                        type="checkbox"
-                        id="servicoDivisoria"
-                        name="servicos"
-                        value="Divisória"
-                    >
-                    <label for="servicoDivisoria">
-                        Divisória
-                    </label>
+                    <input class="form-check-input" type="checkbox"
+                        id="servicoDivisoria" name="servicos" value="Divisória">
+                    <label for="servicoDivisoria">Divisória</label>
                 </div>
 
             </div>
@@ -273,16 +210,9 @@
             <div class="d-flex align-items-center mb-3">
 
                 <div class="form-check-pill mb-0">
-                    <input
-                        class="form-check-input"
-                        type="checkbox"
-                        id="servicoOutro"
-                        name="servicos"
-                        value="Outro"
-                    >
-                    <label for="servicoOutro">
-                        Outro:
-                    </label>
+                    <input class="form-check-input" type="checkbox"
+                        id="servicoOutro" name="servicos" value="Outro">
+                    <label for="servicoOutro">Outro:</label>
                 </div>
 
                 <label for="servicoOutroTexto" class="visually-hidden">
@@ -304,7 +234,6 @@
             <!-- ÁREA / PRAZO -->
             <div class="row-endereco mb-2">
 
-                <!-- ÁREA -->
                 <div>
                     <label for="area" class="visually-hidden">
                         Área aproximada em metros quadrados
@@ -321,56 +250,28 @@
                     >
                 </div>
 
-                <!-- PRAZO -->
                 <div style="flex: 2;">
 
-                    <span class="rotulo-pequeno">
-                        Prazo desejado
-                    </span>
+                    <span class="rotulo-pequeno">Prazo desejado</span>
 
                     <div class="d-flex flex-wrap">
 
-                        <!-- URGENTE -->
                         <div class="form-check-pill">
-                            <input
-                                class="form-check-input"
-                                type="radio"
-                                name="prazo"
-                                id="prazoUrgente"
-                                value="Urgente"
-                                required
-                            >
-                            <label for="prazoUrgente">
-                                Urgente
-                            </label>
+                            <input class="form-check-input" type="radio"
+                                name="prazo" id="prazoUrgente" value="Urgente" required>
+                            <label for="prazoUrgente">Urgente</label>
                         </div>
 
-                        <!-- ATÉ 30 DIAS -->
                         <div class="form-check-pill">
-                            <input
-                                class="form-check-input"
-                                type="radio"
-                                name="prazo"
-                                id="prazo30dias"
-                                value="Até 30 dias"
-                            >
-                            <label for="prazo30dias">
-                                Até 30 dias
-                            </label>
+                            <input class="form-check-input" type="radio"
+                                name="prazo" id="prazo30dias" value="Até 30 dias">
+                            <label for="prazo30dias">Até 30 dias</label>
                         </div>
 
-                        <!-- SEM PRESSA -->
                         <div class="form-check-pill">
-                            <input
-                                class="form-check-input"
-                                type="radio"
-                                name="prazo"
-                                id="prazoSemPressa"
-                                value="Sem pressa"
-                            >
-                            <label for="prazoSemPressa">
-                                Sem pressa
-                            </label>
+                            <input class="form-check-input" type="radio"
+                                name="prazo" id="prazoSemPressa" value="Sem pressa">
+                            <label for="prazoSemPressa">Sem pressa</label>
                         </div>
 
                     </div>
@@ -381,7 +282,7 @@
 
 
             <!-- =================================================
-                 ENDEREÇO
+                 ENDEREÇO (o CEP preenche o restante)
             ================================================== -->
 
             <h2>
@@ -389,11 +290,9 @@
                 Endereço do orçamento:
             </h2>
 
-
             <!-- CEP / ESTADO -->
             <div class="row-endereco">
 
-                <!-- CEP -->
                 <div>
                     <label for="cep" class="visually-hidden">CEP</label>
                     <input
@@ -409,7 +308,6 @@
                     >
                 </div>
 
-                <!-- ESTADO -->
                 <div>
                     <label for="estado" class="visually-hidden">Estado</label>
                     <select
@@ -418,19 +316,18 @@
                         class="form-control"
                         required
                     >
-                        <option value="">
-                            Carregando estados...
-                        </option>
+                        <option value="">Carregando estados...</option>
                     </select>
                 </div>
 
             </div>
 
+            <!-- Mensagem da busca de CEP -->
+            <small id="cepStatus" class="d-block mb-2" aria-live="polite"></small>
 
             <!-- CIDADE / BAIRRO -->
             <div class="row-endereco">
 
-                <!-- CIDADE -->
                 <div>
                     <label for="cidade" class="visually-hidden">Cidade</label>
                     <select
@@ -440,13 +337,10 @@
                         required
                         disabled
                     >
-                        <option value="">
-                            Selecione a cidade
-                        </option>
+                        <option value="">Selecione a cidade</option>
                     </select>
                 </div>
 
-                <!-- BAIRRO -->
                 <div>
                     <label for="bairro" class="visually-hidden">Bairro</label>
                     <input
@@ -463,15 +357,11 @@
 
             </div>
 
-
             <!-- LOGRADOURO / NÚMERO -->
             <div class="row-endereco">
 
-                <!-- LOGRADOURO -->
                 <div>
-                    <label for="logradouro" class="visually-hidden">
-                        Logradouro
-                    </label>
+                    <label for="logradouro" class="visually-hidden">Logradouro</label>
                     <input
                         id="logradouro"
                         name="logradouro"
@@ -484,7 +374,6 @@
                     >
                 </div>
 
-                <!-- NÚMERO -->
                 <div>
                     <label for="numero" class="visually-hidden">Número</label>
                     <input
@@ -500,18 +389,26 @@
 
             </div>
 
-
-            <!-- COMPLEMENTO -->
-            <label for="complemento" class="visually-hidden">
-                Complemento e observações
-            </label>
-            <textarea
+            <!-- COMPLEMENTO (parte do endereço) -->
+            <label for="complemento" class="visually-hidden">Complemento</label>
+            <input
                 id="complemento"
                 name="complemento"
+                type="text"
+                class="form-control"
+                placeholder="Complemento (apto, bloco, referência)"
+                maxlength="150"
+            >
+
+            <!-- OBSERVAÇÕES (parte do orçamento) -->
+            <label for="observacoes" class="visually-hidden">Observações</label>
+            <textarea
+                id="observacoes"
+                name="observacoes"
                 class="form-control"
                 rows="4"
-                maxlength="150"
-                placeholder="Digite seu complemento / observações"
+                maxlength="2000"
+                placeholder="Observações sobre o serviço (opcional)"
             ></textarea>
 
 
@@ -521,15 +418,10 @@
 
             <div class="botoes-acoes">
 
-                <!-- ENVIAR / PDF -->
-                <button
-                    type="submit"
-                    class="btn-enviar"
-                >
+                <button type="submit" class="btn-enviar" id="btnEnviar">
                     Enviar
                 </button>
 
-                <!-- WHATSAPP -->
                 <button
                     type="button"
                     id="btnWhatsApp"
@@ -549,9 +441,7 @@
     <!-- RODAPÉ -->
     <footer class="text-center">
 
-        <p class="text-black fs-6">
-            Sabino Gesso
-        </p>
+        <p class="text-black fs-6">Sabino Gesso</p>
 
         <small class="text-black fs-6">
             © 2026 - Todos os direitos reservados
