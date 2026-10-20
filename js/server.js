@@ -1,17 +1,22 @@
 // ============================================================
 // SERVIDOR - SABINO GESSO
 // Uso: npm install express cors mysql2 express-rate-limit dotenv
+//                  jsonwebtoken bcryptjs
 //      node server.js
 //
 // Variáveis de ambiente (arquivo .env ao lado do server.js):
-//   DB_HOST, DB_PORT (padrão 3306), DB_USER, DB_PASSWORD (obrigatória), DB_NAME
+//   DB_HOST, DB_PORT (padrão 3307), DB_USER, DB_PASSWORD (obrigatória),
+//   DB_NAME
+//   JWT_SECRET   -> OBRIGATÓRIA, mínimo 32 caracteres (assina o login)
 //   CORS_ORIGIN  -> origens permitidas, separadas por vírgula
 //                   ex.: https://sabinogesso.com.br,https://www.sabinogesso.com.br
-//   API_TOKEN    -> token exigido na listagem (GET /api/orcamentos)
 //   TRUST_PROXY  -> nº de proxies à frente do servidor (ex.: 1 com Nginx,
 //                   Cloudflare, Render). Padrão: 0 (sem proxy)
 //   NODE_ENV     -> "production" em produção
 //   PORT
+//
+// Administradores ficam na tabela "administradores" (banco_admin.sql).
+// Crie o primeiro com:  node criar_admin.js
 //
 // Requer express-rate-limit v7 ou superior (usa a opção "limit").
 // ============================================================
@@ -27,12 +32,21 @@ const cors = require("cors");
 const mysql = require("mysql2/promise");
 const crypto = require("crypto");
 const rateLimit = require("express-rate-limit");
+const jwt = require("jsonwebtoken");
+const bcrypt = require("bcryptjs");
 
 const EM_PRODUCAO = process.env.NODE_ENV === "production";
 
 if (!process.env.DB_PASSWORD) {
     console.error(
         "ERRO: defina a variável de ambiente DB_PASSWORD antes de iniciar."
+    );
+    process.exit(1);
+}
+
+if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
+    console.error(
+        "ERRO: defina JWT_SECRET no .env (mínimo 32 caracteres)."
     );
     process.exit(1);
 }
@@ -113,34 +127,25 @@ const limiteGet = rateLimit({
     message: { erro: "Muitas requisições. Tente novamente mais tarde." }
 });
 
-// ============================================================
-// AUTENTICAÇÃO SIMPLES POR TOKEN (rotas internas)
-// Envie o cabeçalho:  Authorization: Bearer SEU_TOKEN
-// ============================================================
-
-function exigirToken(req, res, next) {
-    const tokenEsperado = process.env.API_TOKEN;
-
-    if (!tokenEsperado) {
-        return res.status(503).json({
-            erro: "Listagem indisponível: API_TOKEN não configurado."
-        });
+// Limite por IP no login (além do bloqueio por conta, mais abaixo)
+const limiteLogin = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 20,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: {
+        erro: "Muitas tentativas. Tente novamente em alguns minutos."
     }
+});
 
-    const cabecalho = req.headers.authorization || "";
-    const enviado = cabecalho.startsWith("Bearer ")
-        ? cabecalho.slice(7)
-        : "";
-
-    const a = Buffer.from(enviado);
-    const b = Buffer.from(tokenEsperado);
-
-    if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
-        return res.status(401).json({ erro: "Não autorizado." });
-    }
-
-    next();
-}
+// Limite para ações do painel (alterar projetos etc.)
+const limiteAdmin = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 300,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { erro: "Muitas requisições. Tente novamente mais tarde." }
+});
 
 // ============================================================
 // CONEXÃO COM O BANCO
@@ -156,6 +161,165 @@ const pool = mysql.createPool({
     waitForConnections: true,
     connectionLimit: 10
 });
+
+// ============================================================
+// LOGIN DE ADMINISTRADOR (tabela "administradores")
+// ============================================================
+
+const MAX_TENTATIVAS = 5;
+const MINUTOS_BLOQUEIO = 15;
+
+// Hash falso: se o e-mail não existir, ainda assim gastamos o mesmo
+// tempo comparando, para não revelar quais e-mails são cadastrados.
+const HASH_FALSO = bcrypt.hashSync("senha-falsa-para-igualar-tempo", 12);
+
+// POST /api/admin/login  { email, senha }  ->  { token, nome }
+app.post("/api/admin/login", limiteLogin, async function (req, res) {
+    const email = String((req.body || {}).email ?? "")
+        .trim()
+        .toLowerCase();
+    const senha = String((req.body || {}).senha ?? "");
+
+    const ERRO_GENERICO = { erro: "E-mail ou senha inválidos." };
+
+    if (!email || !senha || email.length > 150 || senha.length > 200) {
+        return res.status(401).json(ERRO_GENERICO);
+    }
+
+    try {
+        const [linhas] = await pool.query(
+            `SELECT id, nome, senha_hash, ativo, tentativas_falhas,
+                    bloqueado_ate > NOW() AS bloqueado
+             FROM administradores
+             WHERE email = ?
+             LIMIT 1`,
+            [email]
+        );
+
+        const admin = linhas[0];
+
+        // Conta bloqueada por tentativas erradas
+        if (admin && admin.bloqueado) {
+            return res.status(429).json({
+                erro: `Conta bloqueada por ${MINUTOS_BLOQUEIO} minutos ` +
+                      "após muitas tentativas."
+            });
+        }
+
+        const senhaOk = await bcrypt.compare(
+            senha,
+            admin ? admin.senha_hash : HASH_FALSO
+        );
+
+        // E-mail não cadastrado
+        if (!admin) {
+            return res.status(401).json({
+                erro: "E-mail não cadastrado.",
+                campo: "email"
+            });
+        }
+
+        // Senha incorreta: conta a tentativa e bloqueia após o limite
+        if (!senhaOk) {
+            const falhas = admin.tentativas_falhas + 1;
+
+            if (falhas >= MAX_TENTATIVAS) {
+                await pool.query(
+                    `UPDATE administradores
+                     SET tentativas_falhas = 0,
+                         bloqueado_ate =
+                             DATE_ADD(NOW(), INTERVAL ? MINUTE)
+                     WHERE id = ?`,
+                    [MINUTOS_BLOQUEIO, admin.id]
+                );
+
+                return res.status(429).json({
+                    erro: "Senha incorreta. Conta bloqueada por " +
+                          `${MINUTOS_BLOQUEIO} minutos.`,
+                    campo: "senha"
+                });
+            }
+
+            await pool.query(
+                `UPDATE administradores
+                 SET tentativas_falhas = ?
+                 WHERE id = ?`,
+                [falhas, admin.id]
+            );
+
+            const restantes = MAX_TENTATIVAS - falhas;
+
+            return res.status(401).json({
+                erro: "Senha incorreta. " +
+                      `Restam ${restantes} tentativa(s).`,
+                campo: "senha"
+            });
+        }
+
+        // Senha certa, mas a conta foi desativada
+        if (!admin.ativo) {
+            return res.status(403).json({
+                erro: "Esta conta está desativada.",
+                campo: "email"
+            });
+        }
+
+        await pool.query(
+            `UPDATE administradores
+             SET tentativas_falhas = 0, bloqueado_ate = NULL,
+                 ultimo_login = NOW()
+             WHERE id = ?`,
+            [admin.id]
+        );
+
+        const token = jwt.sign(
+            { sub: admin.id, papel: "admin" },
+            process.env.JWT_SECRET,
+            { expiresIn: "8h" }
+        );
+
+        return res.json({ token, nome: admin.nome });
+
+    } catch (erro) {
+        console.error("Erro no login de admin:", erro);
+
+        return res.status(500).json({
+            erro: "Erro ao fazer login. Tente novamente."
+        });
+    }
+});
+
+// Middleware: exige o token do login e confere se a conta segue ativa.
+// Envie o cabeçalho:  Authorization: Bearer SEU_TOKEN
+async function exigirAdmin(req, res, next) {
+    const cabecalho = req.headers.authorization || "";
+    const token = cabecalho.startsWith("Bearer ")
+        ? cabecalho.slice(7)
+        : "";
+
+    try {
+        const dados = jwt.verify(token, process.env.JWT_SECRET);
+
+        if (dados.papel !== "admin" || !Number.isInteger(dados.sub)) {
+            throw new Error("token inválido");
+        }
+
+        const [linhas] = await pool.query(
+            "SELECT id FROM administradores WHERE id = ? AND ativo = TRUE",
+            [dados.sub]
+        );
+
+        if (linhas.length === 0) {
+            throw new Error("conta inativa");
+        }
+
+        req.adminId = dados.sub;
+        next();
+
+    } catch (erro) {
+        return res.status(401).json({ erro: "Não autorizado." });
+    }
+}
 
 // ============================================================
 // FUNÇÕES AUXILIARES
@@ -294,6 +458,7 @@ function validarEntrada(d) {
 
     return null;
 }
+
 function validarCNPJServidor(valor) {
     const cnpj = soDigitos(valor);
 
@@ -323,12 +488,12 @@ function validarCNPJServidor(valor) {
 }
 
 
- // ============================================================
- // POST /api/orcamentos/pj
- // Cria um orçamento novo sem excluir os anteriores.
- // ============================================================
+// ============================================================
+// POST /api/orcamentos/pj
+// Cria um orçamento novo sem excluir os anteriores.
+// ============================================================
 
- app.post("/api/orcamentos/pj", limitePost, async function (req, res) {
+app.post("/api/orcamentos/pj", limitePost, async function (req, res) {
     const d = req.body || {};
     const texto = valor => String(valor ?? "").trim();
 
@@ -345,6 +510,7 @@ function validarCNPJServidor(valor) {
     const logradouro = texto(d.logradouro);
     const numero = texto(d.numero);
     const complemento = texto(d.complemento) || null;
+    const observacoes = texto(d.observacoes) || null;
     const area = Number(d.area);
     const prazo = texto(d.prazo);
 
@@ -408,11 +574,30 @@ function validarCNPJServidor(valor) {
         return res.status(400).json({ erro: "Complemento muito longo." });
     }
 
+    if (observacoes && observacoes.length > 2000) {
+        return res.status(400).json({
+            erro: "Observações muito longas (máximo 2000 caracteres)."
+        });
+    }
+
     const servicosRecebidos = Array.isArray(d.servicos)
         ? d.servicos.map(String)
         : [];
 
     const outroDescricao = texto(d.outroDescricao);
+
+    if (outroDescricao.length > 150) {
+        return res.status(400).json({
+            erro: "A descrição do serviço deve ter até 150 caracteres."
+        });
+    }
+
+    // "Outro" marcado sem descrição deve gerar erro (não ser ignorado)
+    if (servicosRecebidos.includes("Outro") && !outroDescricao) {
+        return res.status(400).json({
+            erro: "Descreva o outro serviço."
+        });
+    }
 
     const servicosPedidos = [
         ...new Set([
@@ -424,12 +609,6 @@ function validarCNPJServidor(valor) {
     if (servicosPedidos.length === 0) {
         return res.status(400).json({
             erro: "Selecione pelo menos um serviço."
-        });
-    }
-
-    if (outroDescricao.length > 150) {
-        return res.status(400).json({
-            erro: "A descrição do serviço deve ter até 150 caracteres."
         });
     }
 
@@ -457,7 +636,9 @@ function validarCNPJServidor(valor) {
         );
 
         if (servicoInvalido) {
-            throw new Error(`Serviço não cadastrado ou inativo: ${servicoInvalido}`);
+            throw new Error(
+                `Serviço não cadastrado ou inativo: ${servicoInvalido}`
+            );
         }
 
         // Reutiliza o cadastro da empresa, se o CNPJ já existir.
@@ -470,6 +651,9 @@ function validarCNPJServidor(valor) {
              FOR UPDATE`,
             [cnpj]
         );
+
+        const cepFormatado =
+            `${cepDigitos.slice(0, 5)}-${cepDigitos.slice(5)}`;
 
         let clienteId;
         let clienteCodigo;
@@ -516,9 +700,6 @@ function validarCNPJServidor(valor) {
             );
 
             // Endereço cadastral inicial da empresa.
-            const cepFormatado =
-                `${cepDigitos.slice(0, 5)}-${cepDigitos.slice(5)}`;
-
             await conexao.query(
                 `INSERT INTO enderecos
                     (cliente_id, cep, estado, cidade, bairro,
@@ -537,10 +718,9 @@ function validarCNPJServidor(valor) {
             );
         }
 
-        const cepFormatado =
-            `${cepDigitos.slice(0, 5)}-${cepDigitos.slice(5)}`;
-
         // Cada envio cria uma nova linha em orcamentos.
+        // (colunas nome_fantasia_informado e responsavel_informado:
+        //  veja migracao_pj.sql)
         const [novoOrcamento] = await conexao.query(
             `INSERT INTO orcamentos
                 (codigo, cliente_id, nome_informado,
@@ -558,7 +738,7 @@ function validarCNPJServidor(valor) {
                 telefone,
                 area,
                 prazo,
-                null
+                observacoes
             ]
         );
 
@@ -618,18 +798,21 @@ function validarCNPJServidor(valor) {
             try {
                 await conexao.rollback();
             } catch (erroRollback) {
-                console.error("Erro no rollback do orçamento PJ:", erroRollback);
+                console.error(
+                    "Erro no rollback do orçamento PJ:", erroRollback
+                );
             }
         }
 
         console.error("Erro ao salvar orçamento PJ:", erro);
 
-        return res.status(
-            erro.message?.startsWith("Serviço não cadastrado") ? 400 : 500
-        ).json({
-            erro: erro.message?.startsWith("Serviço não cadastrado")
+        const servicoErro =
+            erro.message?.startsWith("Serviço não cadastrado");
+
+        return res.status(servicoErro ? 400 : 500).json({
+            erro: servicoErro
                 ? erro.message
-                : "Erro ao salvar o orçamento PJ. Confira o terminal do servidor."
+                : "Erro ao salvar o orçamento PJ. Tente novamente."
         });
 
     } finally {
@@ -641,7 +824,7 @@ function validarCNPJServidor(valor) {
 
 
 // ============================================================
-// POST /api/orcamentos
+// POST /api/orcamentos   (Pessoa Física)
 // Nada é apagado nem sobrescrito:
 // - Cliente novo: cria cadastro e endereço cadastral.
 // - Cliente existente (mesmo CPF): dados do cadastro ficam
@@ -881,15 +1064,16 @@ app.post("/api/orcamentos", limitePost, async function (req, res) {
     }
 });
 
+
 // ============================================================
-// GET /api/orcamentos   (PROTEGIDA POR TOKEN)
+// GET /api/orcamentos   (SOMENTE ADMIN LOGADO)
 // Paginação opcional: ?pagina=1&limite=200 (limite máx. 500)
 // ============================================================
 
 app.get(
     "/api/orcamentos",
     limiteGet,
-    exigirToken,
+    exigirAdmin,
     async function (req, res) {
         try {
             const limite = Math.min(
@@ -912,6 +1096,7 @@ app.get(
                     o.criado_em AS criadoEm,
                     c.codigo AS clienteCodigo,
                     c.nome AS clienteNome,
+                    c.tipo_cliente AS tipoCliente,
                     o.nome_informado AS nomeInformado,
                     o.email_informado AS emailInformado,
                     o.telefone_informado AS telefoneInformado,
@@ -981,8 +1166,358 @@ app.get(
     }
 );
 
+
+/* ============================================================
+   PROJETOS - ÁREA ADMINISTRATIVA (SOMENTE ADMIN LOGADO)
+   Usa a tabela projetos do banco sabino_gesso.
+   Não exclui nem substitui orçamentos existentes.
+   ATENÇÃO: estas rotas precisam ficar ANTES do tratamento de
+   erros/404 abaixo, senão nunca são alcançadas.
+============================================================ */
+
+// GET /api/projetos
+// Lista projetos cadastrados e seus dados relacionados.
+app.get(
+    "/api/projetos",
+    limiteGet,
+    exigirAdmin,
+    async function (req, res) {
+        try {
+            const [projetos] = await pool.query(`
+                SELECT
+                    p.id,
+                    p.codigo AS projetoCodigo,
+                    p.status AS projetoStatus,
+                    p.progresso,
+                    p.data_inicio AS dataInicio,
+                    p.data_previsao AS dataPrevisao,
+                    p.data_conclusao AS dataConclusao,
+                    p.observacoes AS projetoObservacoes,
+                    p.criado_em AS criadoEm,
+
+                    o.id AS orcamentoId,
+                    o.codigo AS orcamentoCodigo,
+                    o.area,
+                    o.prazo,
+                    o.valor,
+                    o.status AS orcamentoStatus,
+
+                    c.codigo AS clienteCodigo,
+                    c.nome AS clienteNome,
+                    c.email AS clienteEmail,
+                    c.telefone AS clienteTelefone
+
+                FROM projetos p
+                INNER JOIN orcamentos o
+                    ON o.id = p.orcamento_id
+                INNER JOIN clientes c
+                    ON c.id = o.cliente_id
+                ORDER BY p.criado_em DESC
+            `);
+
+            const [servicos] = await pool.query(`
+                SELECT
+                    os.orcamento_id,
+                    s.nome,
+                    os.outro_descricao
+                FROM orcamento_servicos os
+                INNER JOIN servicos s
+                    ON s.id = os.servico_id
+            `);
+
+            const servicosPorOrcamento = {};
+
+            for (const item of servicos) {
+                if (!servicosPorOrcamento[item.orcamento_id]) {
+                    servicosPorOrcamento[item.orcamento_id] = [];
+                }
+
+                servicosPorOrcamento[item.orcamento_id].push(
+                    item.nome === "Outro" && item.outro_descricao
+                        ? `Outro: ${item.outro_descricao}`
+                        : item.nome
+                );
+            }
+
+            const resultado = projetos.map(projeto => ({
+                ...projeto,
+                area: Number(projeto.area),
+                valor: Number(projeto.valor),
+                progresso: Number(projeto.progresso),
+                servicos: servicosPorOrcamento[projeto.orcamentoId] || []
+            }));
+
+            return res.json(resultado);
+
+        } catch (erro) {
+            console.error("Erro ao listar projetos:", erro);
+
+            return res.status(500).json({
+                erro: "Não foi possível carregar os projetos."
+            });
+        }
+    }
+);
+
+
+// POST /api/projetos
+// Cria um projeto para um orçamento aprovado.
+// O mesmo orçamento não pode gerar dois projetos.
+app.post(
+    "/api/projetos",
+    limiteAdmin,
+    exigirAdmin,
+    async function (req, res) {
+        const orcamentoId = Number((req.body || {}).orcamentoId);
+
+        if (!Number.isInteger(orcamentoId) || orcamentoId <= 0) {
+            return res.status(400).json({
+                erro: "Informe um ID de orçamento válido."
+            });
+        }
+
+        let conexao;
+        let transacaoIniciada = false;
+
+        try {
+            conexao = await pool.getConnection();
+            await conexao.beginTransaction();
+            transacaoIniciada = true;
+
+            const [orcamentos] = await conexao.query(
+                `SELECT id, codigo, status
+                 FROM orcamentos
+                 WHERE id = ?
+                 FOR UPDATE`,
+                [orcamentoId]
+            );
+
+            if (orcamentos.length === 0) {
+                await conexao.rollback();
+                transacaoIniciada = false;
+
+                return res.status(404).json({
+                    erro: "Orçamento não encontrado."
+                });
+            }
+
+            const orcamento = orcamentos[0];
+
+            if (orcamento.status !== "Aprovado") {
+                await conexao.rollback();
+                transacaoIniciada = false;
+
+                return res.status(400).json({
+                    erro: "Somente orçamentos aprovados podem virar projetos."
+                });
+            }
+
+            const [existentes] = await conexao.query(
+                `SELECT id, codigo
+                 FROM projetos
+                 WHERE orcamento_id = ?`,
+                [orcamentoId]
+            );
+
+            if (existentes.length > 0) {
+                await conexao.rollback();
+                transacaoIniciada = false;
+
+                return res.status(409).json({
+                    erro: "Este orçamento já possui um projeto.",
+                    projetoCodigo: existentes[0].codigo
+                });
+            }
+
+            const [insercao] = await conexao.query(
+                `INSERT INTO projetos
+                    (orcamento_id, codigo, status, progresso)
+                 VALUES (?, ?, 'Em andamento', 0)`,
+                [orcamentoId, codigoTemporario()]
+            );
+
+            const projetoId = insercao.insertId;
+            const codigoProjeto = `PRJ-${pad(projetoId, 4)}`;
+
+            await conexao.query(
+                "UPDATE projetos SET codigo = ? WHERE id = ?",
+                [codigoProjeto, projetoId]
+            );
+
+            await conexao.commit();
+            transacaoIniciada = false;
+
+            return res.status(201).json({
+                mensagem: "Projeto criado com sucesso.",
+                id: projetoId,
+                codigo: codigoProjeto,
+                orcamentoCodigo: orcamento.codigo
+            });
+
+        } catch (erro) {
+            if (conexao && transacaoIniciada) {
+                try {
+                    await conexao.rollback();
+                } catch (erroRollback) {
+                    console.error("Erro no rollback:", erroRollback);
+                }
+            }
+
+            console.error("Erro ao criar projeto:", erro);
+
+            return res.status(500).json({
+                erro: "Não foi possível criar o projeto."
+            });
+
+        } finally {
+            if (conexao) conexao.release();
+        }
+    }
+);
+
+
+// PATCH /api/projetos/:id
+// Atualiza status, progresso, datas e observações.
+app.patch(
+    "/api/projetos/:id",
+    limiteAdmin,
+    exigirAdmin,
+    async function (req, res) {
+        const id = Number(req.params.id);
+
+        if (!Number.isInteger(id) || id <= 0) {
+            return res.status(400).json({
+                erro: "ID de projeto inválido."
+            });
+        }
+
+        const permitidos = [
+            "Em andamento",
+            "Pausado",
+            "Concluído",
+            "Cancelado"
+        ];
+
+        const {
+            status, progresso, dataInicio, dataPrevisao,
+            dataConclusao, observacoes
+        } = req.body || {};
+
+        if (status !== undefined && !permitidos.includes(status)) {
+            return res.status(400).json({
+                erro: "Status de projeto inválido."
+            });
+        }
+
+        if (
+            progresso !== undefined &&
+            (!Number.isInteger(Number(progresso)) ||
+             Number(progresso) < 0 ||
+             Number(progresso) > 100)
+        ) {
+            return res.status(400).json({
+                erro: "O progresso deve ser um número entre 0 e 100."
+            });
+        }
+
+        const dataValida = valor =>
+            valor === null ||
+            valor === "" ||
+            (typeof valor === "string" &&
+             /^\d{4}-\d{2}-\d{2}$/.test(valor));
+
+        for (const data of [dataInicio, dataPrevisao, dataConclusao]) {
+            if (data !== undefined && !dataValida(data)) {
+                return res.status(400).json({
+                    erro: "Data inválida. Use o formato AAAA-MM-DD."
+                });
+            }
+        }
+
+        if (observacoes !== undefined && typeof observacoes !== "string") {
+            return res.status(400).json({
+                erro: "As observações devem ser um texto."
+            });
+        }
+
+        try {
+            const [existentes] = await pool.query(
+                "SELECT id FROM projetos WHERE id = ?",
+                [id]
+            );
+
+            if (existentes.length === 0) {
+                return res.status(404).json({
+                    erro: "Projeto não encontrado."
+                });
+            }
+
+            const campos = [];
+            const valores = [];
+
+            if (status !== undefined) {
+                campos.push("status = ?");
+                valores.push(status);
+            }
+
+            if (progresso !== undefined) {
+                campos.push("progresso = ?");
+                valores.push(Number(progresso));
+            }
+
+            if (dataInicio !== undefined) {
+                campos.push("data_inicio = ?");
+                valores.push(dataInicio || null);
+            }
+
+            if (dataPrevisao !== undefined) {
+                campos.push("data_previsao = ?");
+                valores.push(dataPrevisao || null);
+            }
+
+            if (dataConclusao !== undefined) {
+                campos.push("data_conclusao = ?");
+                valores.push(dataConclusao || null);
+            }
+
+            if (observacoes !== undefined) {
+                campos.push("observacoes = ?");
+                valores.push(observacoes.trim() || null);
+            }
+
+            if (campos.length === 0) {
+                return res.status(400).json({
+                    erro: "Nenhum campo foi informado para atualização."
+                });
+            }
+
+            valores.push(id);
+
+            await pool.query(
+                `UPDATE projetos
+                 SET ${campos.join(", ")}
+                 WHERE id = ?`,
+                valores
+            );
+
+            return res.json({
+                mensagem: "Projeto atualizado com sucesso."
+            });
+
+        } catch (erro) {
+            console.error("Erro ao atualizar projeto:", erro);
+
+            return res.status(500).json({
+                erro: "Não foi possível atualizar o projeto."
+            });
+        }
+    }
+);
+
+
 // ============================================================
 // TRATAMENTO DE ERROS (sempre responde em JSON)
+// Precisa ficar DEPOIS de todas as rotas.
 // ============================================================
 
 app.use(function (req, res) {
@@ -1006,333 +1541,6 @@ app.use(function (erro, req, res, next) {
 
     return res.status(500).json({ erro: "Erro interno do servidor." });
 });
-
-
-/* ============================================================
-   PROJETOS - ÁREA ADMINISTRATIVA
-   Usa a tabela projetos do banco sabino_gesso.
-   Não exclui nem substitui orçamentos existentes.
-============================================================ */
-
-// GET /api/projetos
-// Lista projetos cadastrados e seus dados relacionados.
-app.get("/api/projetos", async function (req, res) {
-    try {
-        const [projetos] = await pool.query(`
-            SELECT
-                p.id,
-                p.codigo AS projetoCodigo,
-                p.status AS projetoStatus,
-                p.progresso,
-                p.data_inicio AS dataInicio,
-                p.data_previsao AS dataPrevisao,
-                p.data_conclusao AS dataConclusao,
-                p.observacoes AS projetoObservacoes,
-                p.criado_em AS criadoEm,
-
-                o.id AS orcamentoId,
-                o.codigo AS orcamentoCodigo,
-                o.area,
-                o.prazo,
-                o.valor,
-                o.status AS orcamentoStatus,
-
-                c.codigo AS clienteCodigo,
-                c.nome AS clienteNome,
-                c.email AS clienteEmail,
-                c.telefone AS clienteTelefone
-
-            FROM projetos p
-            INNER JOIN orcamentos o
-                ON o.id = p.orcamento_id
-            INNER JOIN clientes c
-                ON c.id = o.cliente_id
-            ORDER BY p.criado_em DESC
-        `);
-
-        const [servicos] = await pool.query(`
-            SELECT
-                os.orcamento_id,
-                s.nome,
-                os.outro_descricao
-            FROM orcamento_servicos os
-            INNER JOIN servicos s
-                ON s.id = os.servico_id
-        `);
-
-        const servicosPorOrcamento = {};
-
-        for (const item of servicos) {
-            if (!servicosPorOrcamento[item.orcamento_id]) {
-                servicosPorOrcamento[item.orcamento_id] = [];
-            }
-
-            servicosPorOrcamento[item.orcamento_id].push(
-                item.nome === "Outro" && item.outro_descricao
-                    ? `Outro: ${item.outro_descricao}`
-                    : item.nome
-            );
-        }
-
-        const resultado = projetos.map(projeto => ({
-            ...projeto,
-            area: Number(projeto.area),
-            valor: Number(projeto.valor),
-            progresso: Number(projeto.progresso),
-            servicos: servicosPorOrcamento[projeto.orcamentoId] || []
-        }));
-
-        return res.json(resultado);
-
-    } catch (erro) {
-        console.error("Erro ao listar projetos:", erro);
-
-        return res.status(500).json({
-            erro: "Não foi possível carregar os projetos."
-        });
-    }
-});
-
-
-// POST /api/projetos
-// Cria um projeto para um orçamento aprovado.
-// O mesmo orçamento não pode gerar dois projetos.
-app.post("/api/projetos", async function (req, res) {
-    const orcamentoId = Number(req.body.orcamentoId);
-
-    if (!Number.isInteger(orcamentoId) || orcamentoId <= 0) {
-        return res.status(400).json({
-            erro: "Informe um ID de orçamento válido."
-        });
-    }
-
-    let conexao;
-
-    try {
-        conexao = await pool.getConnection();
-        await conexao.beginTransaction();
-
-        const [orcamentos] = await conexao.query(
-            `SELECT id, codigo, status
-             FROM orcamentos
-             WHERE id = ?
-             FOR UPDATE`,
-            [orcamentoId]
-        );
-
-        if (orcamentos.length === 0) {
-            await conexao.rollback();
-
-            return res.status(404).json({
-                erro: "Orçamento não encontrado."
-            });
-        }
-
-        const orcamento = orcamentos[0];
-
-        if (orcamento.status !== "Aprovado") {
-            await conexao.rollback();
-
-            return res.status(400).json({
-                erro: "Somente orçamentos aprovados podem virar projetos."
-            });
-        }
-
-        const [existentes] = await conexao.query(
-            `SELECT id, codigo
-             FROM projetos
-             WHERE orcamento_id = ?`,
-            [orcamentoId]
-        );
-
-        if (existentes.length > 0) {
-            await conexao.rollback();
-
-            return res.status(409).json({
-                erro: "Este orçamento já possui um projeto.",
-                projetoCodigo: existentes[0].codigo
-            });
-        }
-
-        const [insercao] = await conexao.query(
-            `INSERT INTO projetos
-                (orcamento_id, codigo, status, progresso)
-             VALUES (?, ?, 'Em andamento', 0)`,
-            [
-                orcamentoId,
-                `TMP${require("crypto").randomBytes(8).toString("hex")}`
-            ]
-        );
-
-        const projetoId = insercao.insertId;
-        const codigoProjeto = `PRJ-${String(projetoId).padStart(4, "0")}`;
-
-        await conexao.query(
-            "UPDATE projetos SET codigo = ? WHERE id = ?",
-            [codigoProjeto, projetoId]
-        );
-
-        await conexao.commit();
-
-        return res.status(201).json({
-            mensagem: "Projeto criado com sucesso.",
-            id: projetoId,
-            codigo: codigoProjeto,
-            orcamentoCodigo: orcamento.codigo
-        });
-
-    } catch (erro) {
-        if (conexao) {
-            try {
-                await conexao.rollback();
-            } catch (erroRollback) {
-                console.error("Erro no rollback:", erroRollback);
-            }
-        }
-
-        console.error("Erro ao criar projeto:", erro);
-
-        return res.status(500).json({
-            erro: "Não foi possível criar o projeto."
-        });
-
-    } finally {
-        if (conexao) conexao.release();
-    }
-});
-
-
-// PATCH /api/projetos/:id
-// Atualiza status, progresso, datas e observações.
-app.patch("/api/projetos/:id", async function (req, res) {
-    const id = Number(req.params.id);
-
-    if (!Number.isInteger(id) || id <= 0) {
-        return res.status(400).json({
-            erro: "ID de projeto inválido."
-        });
-    }
-
-    const permitidos = [
-        "Em andamento",
-        "Pausado",
-        "Concluído",
-        "Cancelado"
-    ];
-
-    const { status, progresso, dataInicio, dataPrevisao,
-        dataConclusao, observacoes } = req.body;
-
-    if (status !== undefined && !permitidos.includes(status)) {
-        return res.status(400).json({
-            erro: "Status de projeto inválido."
-        });
-    }
-
-    if (
-        progresso !== undefined &&
-        (!Number.isInteger(Number(progresso)) ||
-         Number(progresso) < 0 ||
-         Number(progresso) > 100)
-    ) {
-        return res.status(400).json({
-            erro: "O progresso deve ser um número entre 0 e 100."
-        });
-    }
-
-    const dataValida = valor =>
-        valor === null ||
-        valor === "" ||
-        (typeof valor === "string" &&
-         /^\d{4}-\d{2}-\d{2}$/.test(valor));
-
-    for (const data of [dataInicio, dataPrevisao, dataConclusao]) {
-        if (data !== undefined && !dataValida(data)) {
-            return res.status(400).json({
-                erro: "Data inválida. Use o formato AAAA-MM-DD."
-            });
-        }
-    }
-
-    try {
-        const [existentes] = await pool.query(
-            "SELECT id FROM projetos WHERE id = ?",
-            [id]
-        );
-
-        if (existentes.length === 0) {
-            return res.status(404).json({
-                erro: "Projeto não encontrado."
-            });
-        }
-
-        const campos = [];
-        const valores = [];
-
-        if (status !== undefined) {
-            campos.push("status = ?");
-            valores.push(status);
-        }
-
-        if (progresso !== undefined) {
-            campos.push("progresso = ?");
-            valores.push(Number(progresso));
-        }
-
-        if (dataInicio !== undefined) {
-            campos.push("data_inicio = ?");
-            valores.push(dataInicio || null);
-        }
-
-        if (dataPrevisao !== undefined) {
-            campos.push("data_previsao = ?");
-            valores.push(dataPrevisao || null);
-        }
-
-        if (dataConclusao !== undefined) {
-            campos.push("data_conclusao = ?");
-            valores.push(dataConclusao || null);
-        }
-
-        if (observacoes !== undefined) {
-            if (typeof observacoes !== "string") {
-                return res.status(400).json({
-                    erro: "As observações devem ser um texto."
-                });
-            }
-
-            campos.push("observacoes = ?");
-            valores.push(observacoes.trim() || null);
-        }
-
-        if (campos.length === 0) {
-            return res.status(400).json({
-                erro: "Nenhum campo foi informado para atualização."
-            });
-        }
-
-        valores.push(id);
-
-        await pool.query(
-            `UPDATE projetos
-             SET ${campos.join(", ")}
-             WHERE id = ?`,
-            valores
-        );
-
-        return res.json({
-            mensagem: "Projeto atualizado com sucesso."
-        });
-
-    } catch (erro) {
-        console.error("Erro ao atualizar projeto:", erro);
-
-        return res.status(500).json({
-            erro: "Não foi possível atualizar o projeto."
-        });
-    }
-});
-
 
 
 // ============================================================
