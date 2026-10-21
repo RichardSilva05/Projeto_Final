@@ -335,6 +335,33 @@ function pad(numero, tamanho) {
     return String(numero).padStart(tamanho, "0");
 }
 
+// Valor estimado = área x (soma dos preços por m² dos serviços escolhidos).
+// Serviço sem preço (ex.: "Outro") é "sob consulta" e não entra na conta.
+// Calcula em centavos para não acumular erro de arredondamento.
+// O navegador faz a mesma conta só para mostrar ao cliente; o valor
+// gravado no banco é sempre o calculado aqui.
+function calcularValor(area, nomesServicos, precosPorNome) {
+    let centavos = 0;
+
+    for (const nome of nomesServicos) {
+        const bruto = precosPorNome[nome];
+
+        if (bruto === null || bruto === undefined) {
+            continue;
+        }
+
+        const preco = Number(bruto);
+
+        if (!Number.isFinite(preco) || preco <= 0) {
+            continue;
+        }
+
+        centavos += Math.round(area * preco * 100);
+    }
+
+    return centavos / 100;
+}
+
 function codigoTemporario() {
     return "TMP" + crypto.randomBytes(8).toString("hex");
 }
@@ -456,6 +483,10 @@ function validarEntrada(d) {
         }
     }
 
+    if (typeof d.visitaTecnica !== "boolean") {
+        return "Informe se deseja a visita técnica no local.";
+    }
+
     return null;
 }
 
@@ -513,6 +544,7 @@ app.post("/api/orcamentos/pj", limitePost, async function (req, res) {
     const observacoes = texto(d.observacoes) || null;
     const area = Number(d.area);
     const prazo = texto(d.prazo);
+    const visitaTecnica = d.visitaTecnica === true;
 
     if (!razaoSocial || razaoSocial.length > 150) {
         return res.status(400).json({ erro: "Razão social inválida." });
@@ -544,6 +576,12 @@ app.post("/api/orcamentos/pj", limitePost, async function (req, res) {
 
     if (!PRAZOS.includes(prazo)) {
         return res.status(400).json({ erro: "Prazo inválido." });
+    }
+
+    if (typeof d.visitaTecnica !== "boolean") {
+        return res.status(400).json({
+            erro: "Informe se deseja a visita técnica no local."
+        });
     }
 
     if (cepDigitos.length !== 8) {
@@ -622,13 +660,15 @@ app.post("/api/orcamentos/pj", limitePost, async function (req, res) {
 
         // Confere os serviços cadastrados no banco.
         const [servicosBanco] = await conexao.query(
-            "SELECT id, nome FROM servicos WHERE ativo = TRUE"
+            "SELECT id, nome, preco_m2 FROM servicos WHERE ativo = TRUE"
         );
 
         const mapaServicos = {};
+        const mapaPrecos = {};
 
         servicosBanco.forEach(servico => {
             mapaServicos[servico.nome] = servico.id;
+            mapaPrecos[servico.nome] = servico.preco_m2;
         });
 
         const servicoInvalido = servicosPedidos.find(
@@ -640,6 +680,8 @@ app.post("/api/orcamentos/pj", limitePost, async function (req, res) {
                 `Serviço não cadastrado ou inativo: ${servicoInvalido}`
             );
         }
+
+        const valor = calcularValor(area, servicosPedidos, mapaPrecos);
 
         // Reutiliza o cadastro da empresa, se o CNPJ já existir.
         // Não atualiza nem exclui o cadastro existente.
@@ -726,8 +768,8 @@ app.post("/api/orcamentos/pj", limitePost, async function (req, res) {
                 (codigo, cliente_id, nome_informado,
                  nome_fantasia_informado, responsavel_informado,
                  email_informado, telefone_informado,
-                 area, prazo, observacoes)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                 area, prazo, observacoes, valor, visita_tecnica)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
                 codigoTemporario(),
                 clienteId,
@@ -738,7 +780,9 @@ app.post("/api/orcamentos/pj", limitePost, async function (req, res) {
                 telefone,
                 area,
                 prazo,
-                observacoes
+                observacoes,
+                valor,
+                visitaTecnica
             ]
         );
 
@@ -790,7 +834,8 @@ app.post("/api/orcamentos/pj", limitePost, async function (req, res) {
         return res.status(201).json({
             mensagem: "Orçamento PJ criado com sucesso.",
             codigo,
-            clienteCodigo
+            clienteCodigo,
+            valor
         });
 
     } catch (erro) {
@@ -858,6 +903,7 @@ app.post("/api/orcamentos", limitePost, async function (req, res) {
 
     const complemento = String(d.complemento ?? "").trim() || null;
     const observacoes = String(d.observacoes ?? "").trim() || null;
+    const visitaTecnica = d.visitaTecnica === true;
 
     const servicosPedidos = [...new Set(d.servicos.map(String))];
 
@@ -875,13 +921,15 @@ app.post("/api/orcamentos", limitePost, async function (req, res) {
         // ----------------------------------------------------
 
         const [servicosBanco] = await conexao.query(
-            "SELECT id, nome FROM servicos WHERE ativo = TRUE"
+            "SELECT id, nome, preco_m2 FROM servicos WHERE ativo = TRUE"
         );
 
         const mapaServicos = {};
+        const mapaPrecos = {};
 
         servicosBanco.forEach(s => {
             mapaServicos[s.nome] = s.id;
+            mapaPrecos[s.nome] = s.preco_m2;
         });
 
         const invalido = servicosPedidos.find(
@@ -896,6 +944,10 @@ app.post("/api/orcamentos", limitePost, async function (req, res) {
                 erro: `Serviço inválido: ${invalido}`
             });
         }
+
+        const valor = calcularValor(
+            Number(d.area), servicosPedidos, mapaPrecos
+        );
 
         // ----------------------------------------------------
         // CLIENTE
@@ -975,8 +1027,9 @@ app.post("/api/orcamentos", limitePost, async function (req, res) {
         const [orcamento] = await conexao.query(
             `INSERT INTO orcamentos
                 (codigo, cliente_id, nome_informado, email_informado,
-                 telefone_informado, area, prazo, observacoes)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+                 telefone_informado, area, prazo, observacoes,
+                 valor, visita_tecnica)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
                 codigoTemporario(),
                 clienteId,
@@ -985,7 +1038,9 @@ app.post("/api/orcamentos", limitePost, async function (req, res) {
                 telefone,
                 Number(d.area),
                 d.prazo,
-                observacoes
+                observacoes,
+                valor,
+                visitaTecnica
             ]
         );
 
@@ -1039,7 +1094,8 @@ app.post("/api/orcamentos", limitePost, async function (req, res) {
         return res.status(201).json({
             mensagem: "Orçamento criado com sucesso.",
             codigo,
-            clienteCodigo
+            clienteCodigo,
+            valor
         });
 
     } catch (erro) {
@@ -1093,6 +1149,7 @@ app.get(
                     o.status,
                     o.progresso,
                     o.observacoes,
+                    o.visita_tecnica AS visitaTecnica,
                     o.criado_em AS criadoEm,
                     c.codigo AS clienteCodigo,
                     c.nome AS clienteNome,
@@ -1150,6 +1207,7 @@ app.get(
                     area: Number(o.area),
                     valor: Number(o.valor),
                     progresso: Number(o.progresso),
+                    visitaTecnica: Boolean(o.visitaTecnica),
                     servicos: servicosPorOrcamento[o.id] || []
                 };
             });
@@ -1509,6 +1567,186 @@ app.patch(
 
             return res.status(500).json({
                 erro: "Não foi possível atualizar o projeto."
+            });
+        }
+    }
+);
+
+
+// ============================================================
+// GET /api/servicos   (PÚBLICA - usada pelos formulários)
+// Devolve os serviços ativos e o preço do m² de cada um.
+// precoM2 = null significa "sob consulta".
+// ============================================================
+
+app.get("/api/servicos", limiteGet, async function (req, res) {
+    try {
+        const [linhas] = await pool.query(
+            `SELECT nome, preco_m2
+             FROM servicos
+             WHERE ativo = TRUE
+             ORDER BY id`
+        );
+
+        return res.json(
+            linhas.map(function (s) {
+                return {
+                    nome: s.nome,
+                    precoM2: s.preco_m2 === null ? null : Number(s.preco_m2)
+                };
+            })
+        );
+
+    } catch (erro) {
+        console.error("Erro ao listar serviços:", erro);
+
+        return res.status(500).json({
+            erro: "Não foi possível carregar os serviços."
+        });
+    }
+});
+
+
+// ============================================================
+// PATCH /api/orcamentos/:id/status   (SOMENTE ADMIN LOGADO)
+// Troca o status entre: Aguardando (Pendente), Em análise, Aprovado.
+// ============================================================
+
+const STATUS_PAINEL = ["Aguardando", "Em análise", "Aprovado"];
+
+app.patch(
+    "/api/orcamentos/:id/status",
+    limiteAdmin,
+    exigirAdmin,
+    async function (req, res) {
+        const id = Number(req.params.id);
+        const status = String((req.body || {}).status ?? "").trim();
+
+        if (!Number.isInteger(id) || id <= 0) {
+            return res.status(400).json({
+                erro: "ID de orçamento inválido."
+            });
+        }
+
+        if (!STATUS_PAINEL.includes(status)) {
+            return res.status(400).json({
+                erro: "Status inválido. Use: Aguardando, Em análise " +
+                      "ou Aprovado."
+            });
+        }
+
+        try {
+            const [orcamentos] = await pool.query(
+                "SELECT id, status FROM orcamentos WHERE id = ?",
+                [id]
+            );
+
+            if (orcamentos.length === 0) {
+                return res.status(404).json({
+                    erro: "Orçamento não encontrado."
+                });
+            }
+
+            // Orçamento que já virou projeto não pode deixar de ser aprovado
+            if (status !== "Aprovado") {
+                const [projetos] = await pool.query(
+                    "SELECT codigo FROM projetos WHERE orcamento_id = ?",
+                    [id]
+                );
+
+                if (projetos.length > 0) {
+                    return res.status(409).json({
+                        erro: "Este orçamento já virou o projeto " +
+                              `${projetos[0].codigo} e não pode voltar ` +
+                              "para outro status."
+                    });
+                }
+            }
+
+            await pool.query(
+                "UPDATE orcamentos SET status = ? WHERE id = ?",
+                [status, id]
+            );
+
+            return res.json({
+                mensagem: "Status atualizado com sucesso.",
+                id,
+                status
+            });
+
+        } catch (erro) {
+            console.error("Erro ao atualizar status:", erro);
+
+            return res.status(500).json({
+                erro: "Não foi possível atualizar o status."
+            });
+        }
+    }
+);
+
+
+// ============================================================
+// GET /api/painel   (SOMENTE ADMIN LOGADO)
+// Dados da Visão Geral: totais do mês e lista de clientes.
+// ============================================================
+
+app.get(
+    "/api/painel",
+    limiteGet,
+    exigirAdmin,
+    async function (req, res) {
+        try {
+            const [[totais]] = await pool.query(`
+                SELECT
+                    (SELECT COUNT(*) FROM orcamentos)
+                        AS totalOrcamentos,
+
+                    (SELECT COUNT(*) FROM clientes
+                      WHERE criado_em >= DATE_FORMAT(CURDATE(), '%Y-%m-01'))
+                        AS novosClientes,
+
+                    (SELECT COALESCE(SUM(valor), 0) FROM orcamentos
+                      WHERE status IN ('Aprovado', 'Concluído')
+                        AND criado_em >= DATE_FORMAT(CURDATE(), '%Y-%m-01'))
+                        AS receitaMensal
+            `);
+
+            // Status do cliente = status do orçamento mais recente dele
+            const [clientes] = await pool.query(`
+                SELECT
+                    c.codigo,
+                    c.tipo_cliente AS tipo,
+                    c.nome,
+                    c.email,
+                    c.telefone,
+                    o.id AS orcamentoId,
+                    o.codigo AS orcamentoCodigo,
+                    o.status
+                FROM clientes c
+                LEFT JOIN orcamentos o
+                    ON o.id = (
+                        SELECT o2.id
+                          FROM orcamentos o2
+                         WHERE o2.cliente_id = c.id
+                         ORDER BY o2.criado_em DESC, o2.id DESC
+                         LIMIT 1
+                    )
+                ORDER BY c.criado_em DESC, c.id DESC
+                LIMIT 50
+            `);
+
+            return res.json({
+                totalOrcamentos: Number(totais.totalOrcamentos),
+                novosClientes: Number(totais.novosClientes),
+                receitaMensal: Number(totais.receitaMensal),
+                clientes
+            });
+
+        } catch (erro) {
+            console.error("Erro ao carregar o painel:", erro);
+
+            return res.status(500).json({
+                erro: "Não foi possível carregar os dados do painel."
             });
         }
     }

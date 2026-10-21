@@ -1,6 +1,6 @@
 // =========================================================
 // PAINEL - SABINO GESSO
-// Dados carregados diretamente através da API
+// Dados carregados do banco através da API (rota protegida)
 // =========================================================
 
 
@@ -17,14 +17,11 @@ const API_URL = "http://localhost:3000/api";
 // INICIALIZAÇÃO
 // =========================================================
 
-document.addEventListener(
-    "DOMContentLoaded",
-    function () {
+document.addEventListener("DOMContentLoaded", function () {
 
-        carregarPainel();
+    carregarPainel();
 
-    }
-);
+});
 
 
 // =========================================================
@@ -33,17 +30,33 @@ document.addEventListener(
 
 async function carregarPainel() {
 
+    const token = sessionStorage.getItem("tokenAdmin");
+
+    // Sem login: volta para a tela de login
+    if (!token) {
+        window.location.replace("login.html");
+        return;
+    }
+
     try {
 
-        /*
-            Busca os dados gerais do painel.
-        */
+        const resposta = await fetch(
+            `${API_URL}/painel`,
+            {
+                headers: {
+                    Authorization: "Bearer " + token
+                }
+            }
+        );
 
-        const resposta =
-            await fetch(
-                `${API_URL}/painel`
-            );
+        // Token vencido ou inválido
+        if (resposta.status === 401) {
 
+            sessionStorage.removeItem("tokenAdmin");
+            window.location.replace("login.html");
+            return;
+
+        }
 
         if (!resposta.ok) {
 
@@ -53,36 +66,14 @@ async function carregarPainel() {
 
         }
 
+        const dados = await resposta.json();
 
-        const dados =
-            await resposta.json();
-
-
-        /*
-            Atualiza os cards
-        */
-
-        atualizarResumo(
-            dados
-        );
-
-
-        /*
-            Atualiza a tabela
-        */
-
-        carregarClientes(
-            dados.clientes || []
-        );
-
+        atualizarResumo(dados);
+        carregarClientes(dados.clientes || []);
 
     } catch (erro) {
 
-        console.error(
-            "Erro ao carregar painel:",
-            erro
-        );
-
+        console.error("Erro ao carregar painel:", erro);
 
         mostrarErro();
 
@@ -95,229 +86,267 @@ async function carregarPainel() {
 // ATUALIZAR CARDS
 // =========================================================
 
-function atualizarResumo(
-    dados
-) {
+function atualizarResumo(dados) {
+
+    definirTexto(
+        "totalOrcamentos",
+        formatarNumero(dados.totalOrcamentos)
+    );
+
+    definirTexto(
+        "novosClientes",
+        formatarNumero(dados.novosClientes)
+    );
+
+    definirTexto(
+        "receitaMensal",
+        formatarMoeda(dados.receitaMensal)
+    );
+
+}
 
 
-    // TOTAL DE ORÇAMENTOS
+function definirTexto(id, texto) {
 
-    const totalOrcamentos =
-        document.getElementById(
-            "totalOrcamentos"
-        );
+    const elemento = document.getElementById(id);
 
-
-    if (totalOrcamentos) {
-
-        totalOrcamentos.textContent =
-            formatarNumero(
-                dados.totalOrcamentos
-            );
-
-    }
-
-
-
-    // NOVOS CLIENTES
-
-    const novosClientes =
-        document.getElementById(
-            "novosClientes"
-        );
-
-
-    if (novosClientes) {
-
-        novosClientes.textContent =
-            formatarNumero(
-                dados.novosClientes
-            );
-
-    }
-
-
-
-    // RECEITA MENSAL
-
-    const receitaMensal =
-        document.getElementById(
-            "receitaMensal"
-        );
-
-
-    if (receitaMensal) {
-
-        receitaMensal.textContent =
-            formatarMoeda(
-                dados.receitaMensal
-            );
-
+    if (elemento) {
+        elemento.textContent = texto;
     }
 
 }
 
 
 // =========================================================
-// CARREGAR CLIENTES
+// TABELA DE CLIENTES
 // =========================================================
 
-function carregarClientes(
-    clientes
-) {
+function criarLinhaMensagem(texto, cor) {
 
-    const tabela =
-        document.getElementById(
-            "tabelaClientes"
-        );
+    const linha = document.createElement("tr");
+    const coluna = document.createElement("td");
 
+    coluna.colSpan = 4;
+    coluna.style.textAlign = "center";
+
+    if (cor) {
+        coluna.style.color = cor;
+    }
+
+    coluna.textContent = texto;
+
+    linha.appendChild(coluna);
+
+    return linha;
+
+}
+
+
+function carregarClientes(clientes) {
+
+    const tabela = document.getElementById("tabelaClientes");
 
     if (!tabela) {
         return;
     }
 
-
     tabela.innerHTML = "";
 
+    // Nenhum cliente encontrado
+    if (!Array.isArray(clientes) || clientes.length === 0) {
 
-    /*
-        Nenhum cliente encontrado
-    */
-
-    if (!Array.isArray(clientes) ||
-        clientes.length === 0) {
-
-        tabela.innerHTML = `
-
-            <tr>
-
-                <td
-                    colspan="4"
-                    style="text-align: center;"
-                >
-
-                    Nenhum cliente cadastrado.
-
-                </td>
-
-            </tr>
-
-        `;
+        tabela.appendChild(
+            criarLinhaMensagem("Nenhum cliente cadastrado.")
+        );
 
         return;
 
     }
 
+    // Os dados vêm de formulários públicos: textContent (nunca
+    // innerHTML) impede que alguém injete código na página.
+    clientes.forEach(function (cliente) {
 
-    /*
-        Criar cada linha
-    */
+        const linha = document.createElement("tr");
 
-    clientes.forEach(
-        function (cliente) {
+        // NOME
 
-            const linha =
-                document.createElement(
-                    "tr"
-                );
+        const colunaNome = document.createElement("td");
+        colunaNome.textContent = cliente.nome || "-";
 
+        // EMAIL
 
-            // NOME
+        const colunaEmail = document.createElement("td");
+        colunaEmail.textContent = cliente.email || "-";
 
-            const colunaNome =
-                document.createElement(
-                    "td"
-                );
+        // TELEFONE
 
-            colunaNome.textContent =
-                cliente.nome || "-";
+        const colunaTelefone = document.createElement("td");
+        colunaTelefone.textContent = formatarTelefone(cliente.telefone);
 
+        // STATUS
 
-            // EMAIL
+        const colunaStatus = document.createElement("td");
 
-            const colunaEmail =
-                document.createElement(
-                    "td"
-                );
+        colunaStatus.appendChild(criarSeletorStatus(cliente));
 
-            colunaEmail.textContent =
-                cliente.email || "-";
+        // MONTAR LINHA
 
+        linha.appendChild(colunaNome);
+        linha.appendChild(colunaEmail);
+        linha.appendChild(colunaTelefone);
+        linha.appendChild(colunaStatus);
 
-            // TELEFONE
+        tabela.appendChild(linha);
 
-            const colunaTelefone =
-                document.createElement(
-                    "td"
-                );
+    });
 
-            colunaTelefone.textContent =
-                cliente.telefone || "-";
+}
 
 
-            // STATUS
+// =========================================================
+// MUDAR STATUS (Pendente / Em análise / Aprovado)
+// =========================================================
 
-            const colunaStatus =
-                document.createElement(
-                    "td"
-                );
-
-
-            const status =
-                document.createElement(
-                    "span"
-                );
+// valor = o que o banco guarda | rotulo = o que aparece na tela
+const OPCOES_STATUS = [
+    { valor: "Aguardando", rotulo: "Pendente" },
+    { valor: "Em análise", rotulo: "Em análise" },
+    { valor: "Aprovado", rotulo: "Aprovado" }
+];
 
 
-            const statusNormalizado =
-                normalizarStatus(
-                    cliente.status
-                );
+function estilizarStatus(elemento, status) {
+
+    elemento.className =
+        "status " + obterClasseStatus(normalizarStatus(status));
+
+}
 
 
-            status.className =
-                "status " +
-                obterClasseStatus(
-                    statusNormalizado
-                );
+function criarSeletorStatus(cliente) {
+
+    const atual = cliente.status || "Aguardando";
+
+    const editavel =
+        cliente.orcamentoId &&
+        OPCOES_STATUS.some(function (o) {
+            return o.valor === atual;
+        });
+
+    // Sem orçamento, ou com status fora das 3 opções
+    // (Recusado, Cancelado, Concluído): mostra só o texto.
+    if (!editavel) {
+
+        const texto = document.createElement("span");
+
+        estilizarStatus(texto, atual);
+        texto.textContent = formatarStatus(atual);
+
+        return texto;
+
+    }
+
+    const seletor = document.createElement("select");
+
+    seletor.setAttribute(
+        "aria-label",
+        "Status do orçamento " + (cliente.orcamentoCodigo || "")
+    );
+
+    OPCOES_STATUS.forEach(function (opcao) {
+
+        const item = document.createElement("option");
+
+        item.value = opcao.valor;
+        item.textContent = opcao.rotulo;
+
+        seletor.appendChild(item);
+
+    });
+
+    seletor.value = atual;
+    seletor.dataset.anterior = atual;
+
+    estilizarStatus(seletor, atual);
+
+    seletor.style.cssText =
+        "border:0;cursor:pointer;font:inherit;" +
+        "border-radius:20px;padding:4px 10px;";
+
+    seletor.addEventListener("change", function () {
+
+        alterarStatus(seletor, cliente);
+
+    });
+
+    return seletor;
+
+}
 
 
-            status.textContent =
-                formatarStatus(
-                    cliente.status
-                );
+async function alterarStatus(seletor, cliente) {
 
+    const novo = seletor.value;
+    const anterior = seletor.dataset.anterior;
 
-            colunaStatus.appendChild(
-                status
-            );
+    seletor.disabled = true;
 
+    try {
 
-            // MONTAR LINHA
+        const resposta = await fetch(
+            `${API_URL}/orcamentos/${cliente.orcamentoId}/status`,
+            {
+                method: "PATCH",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization:
+                        "Bearer " + sessionStorage.getItem("tokenAdmin")
+                },
+                body: JSON.stringify({ status: novo })
+            }
+        );
 
-            linha.appendChild(
-                colunaNome
-            );
+        // Token vencido ou inválido
+        if (resposta.status === 401) {
 
-            linha.appendChild(
-                colunaEmail
-            );
+            sessionStorage.removeItem("tokenAdmin");
+            window.location.replace("login.html");
+            return;
 
-            linha.appendChild(
-                colunaTelefone
-            );
+        }
 
-            linha.appendChild(
-                colunaStatus
-            );
+        const dados = await resposta.json().catch(function () {
+            return {};
+        });
 
+        if (!resposta.ok) {
 
-            tabela.appendChild(
-                linha
+            throw new Error(
+                dados.erro || "Não foi possível alterar o status."
             );
 
         }
-    );
+
+        seletor.dataset.anterior = novo;
+        estilizarStatus(seletor, novo);
+
+        // Atualiza os cards (a receita depende do status)
+        carregarPainel();
+
+    } catch (erro) {
+
+        // Volta para o status que estava antes
+        seletor.value = anterior;
+        estilizarStatus(seletor, anterior);
+
+        alert(erro.message || "Não foi possível alterar o status.");
+
+    } finally {
+
+        seletor.disabled = false;
+
+    }
 
 }
 
@@ -326,40 +355,32 @@ function carregarClientes(
 // STATUS
 // =========================================================
 
-function normalizarStatus(
-    status
-) {
+function normalizarStatus(status) {
 
-    return String(
-        status || ""
-    )
+    return String(status || "")
         .toLowerCase()
         .trim()
         .normalize("NFD")
-        .replace(
-            /[\u0300-\u036f]/g,
-            ""
-        )
-        .replace(
-            /\s+/g,
-            "-"
-        );
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/\s+/g, "-");
 
 }
 
 
-function obterClasseStatus(
-    status
-) {
+function obterClasseStatus(status) {
 
     switch (status) {
 
         case "aprovado":
+        case "concluido":
             return "status-aprovado";
 
         case "cancelado":
         case "recusado":
             return "status-recusado";
+
+        case "em-analise":
+            return "status-analise";
 
         case "pendente":
         case "aguardando":
@@ -371,25 +392,19 @@ function obterClasseStatus(
 }
 
 
-function formatarStatus(
-    status
-) {
+function formatarStatus(status) {
 
     if (!status) {
         return "Pendente";
     }
 
-
-    const normalizado =
-        normalizarStatus(
-            status
-        );
-
-
-    switch (normalizado) {
+    switch (normalizarStatus(status)) {
 
         case "aprovado":
             return "Aprovado";
+
+        case "concluido":
+            return "Concluído";
 
         case "cancelado":
             return "Cancelado";
@@ -397,9 +412,10 @@ function formatarStatus(
         case "recusado":
             return "Recusado";
 
-        case "aguardando":
-            return "Pendente";
+        case "em-analise":
+            return "Em análise";
 
+        case "aguardando":
         case "pendente":
             return "Pendente";
 
@@ -412,45 +428,29 @@ function formatarStatus(
 
 
 // =========================================================
-// FORMATAR NÚMERO
+// FORMATAÇÃO
 // =========================================================
 
-function formatarNumero(
-    valor
-) {
+function formatarNumero(valor) {
 
-    const numero =
-        Number(valor);
-
+    const numero = Number(valor);
 
     if (isNaN(numero)) {
         return "0";
     }
 
-
-    return numero.toLocaleString(
-        "pt-BR"
-    );
+    return numero.toLocaleString("pt-BR");
 
 }
 
 
-// =========================================================
-// FORMATAR MOEDA
-// =========================================================
+function formatarMoeda(valor) {
 
-function formatarMoeda(
-    valor
-) {
-
-    const numero =
-        Number(valor);
-
+    const numero = Number(valor);
 
     if (isNaN(numero)) {
         return "R$ 0,00";
     }
-
 
     return numero.toLocaleString(
         "pt-BR",
@@ -463,76 +463,47 @@ function formatarMoeda(
 }
 
 
+// O banco guarda só os dígitos: 47999999999 -> (47) 99999-9999
+function formatarTelefone(telefone) {
+
+    const d = String(telefone || "").replace(/\D/g, "");
+
+    if (d.length === 11) {
+        return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
+    }
+
+    if (d.length === 10) {
+        return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`;
+    }
+
+    return telefone || "-";
+
+}
+
+
 // =========================================================
 // ERRO
 // =========================================================
 
 function mostrarErro() {
 
-
-    const tabela =
-        document.getElementById(
-            "tabelaClientes"
-        );
-
+    const tabela = document.getElementById("tabelaClientes");
 
     if (tabela) {
 
-        tabela.innerHTML = `
+        tabela.innerHTML = "";
 
-            <tr>
-
-                <td
-                    colspan="4"
-                    style="
-                        text-align: center;
-                        color: #e04444;
-                    "
-                >
-
-                    <i class="bi bi-exclamation-circle"></i>
-
-                    Não foi possível carregar os dados.
-
-                </td>
-
-            </tr>
-
-        `;
-
-    }
-
-
-    const totalOrcamentos =
-        document.getElementById(
-            "totalOrcamentos"
+        tabela.appendChild(
+            criarLinhaMensagem(
+                "Não foi possível carregar os dados.",
+                "#e04444"
+            )
         );
 
-
-    const novosClientes =
-        document.getElementById(
-            "novosClientes"
-        );
-
-
-    const receitaMensal =
-        document.getElementById(
-            "receitaMensal"
-        );
-
-
-    if (totalOrcamentos) {
-        totalOrcamentos.textContent = "-";
     }
 
-
-    if (novosClientes) {
-        novosClientes.textContent = "-";
-    }
-
-
-    if (receitaMensal) {
-        receitaMensal.textContent = "-";
-    }
+    definirTexto("totalOrcamentos", "-");
+    definirTexto("novosClientes", "-");
+    definirTexto("receitaMensal", "-");
 
 }
